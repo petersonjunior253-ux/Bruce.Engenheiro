@@ -138,6 +138,7 @@ async def health():
  return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 def offline_intent(text:str):
  normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
+ normalized=normalized.replace("wi-fi","wifi")
  normalized=re.sub(r"\s+"," ",normalized).strip()
  if re.search(r"\b(que horas|horas sao|horario agora)\b",normalized):
   return None,{}, "Agora são "+datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%H:%M")+" no horário de Brasília."
