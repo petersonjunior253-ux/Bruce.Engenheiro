@@ -1,6 +1,8 @@
 from __future__ import annotations
-import asyncio,hashlib,hmac,json,os,secrets,sqlite3,time
+import asyncio,hashlib,hmac,json,os,re,secrets,sqlite3,time,unicodedata
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Literal,Any
 import httpx
 from fastapi import Depends,FastAPI,Header,HTTPException,Query
@@ -134,9 +136,73 @@ async def health():
   except Exception:
    storage="error"
  return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+def offline_intent(text:str):
+ normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
+ normalized=re.sub(r"\s+"," ",normalized).strip()
+ if re.search(r"\b(que horas|horas sao|horario agora)\b",normalized):
+  return None,{}, "Agora são "+datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%H:%M")+" no horário de Brasília."
+ if re.search(r"\b(que dia e hoje|data de hoje|qual a data)\b",normalized):
+  return None,{}, "Hoje é "+datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")+"."
+ if re.search(r"\b(abrir|abra|abre|ir para|mostrar)\b.*\b(configuracoes|ajustes)\b",normalized):
+  section="accessibility" if "acessibilidade" in normalized else "notification_access" if "notificacoes" in normalized and ("acesso" in normalized or "permissao" in normalized) else "files" if "arquivo" in normalized else "settings"
+  return "open_device_settings",{"section":section},"Vou abrir as configurações solicitadas."
+ if re.search(r"\b(ler|mostrar|ver|consultar)\b.*\b(notificacoes)\b",normalized):
+  return "list_notifications",{},"Vou consultar as notificações ativas."
+ if re.search(r"\b(listar|mostrar|ver)\b.*\b(aplicativos|apps)\b",normalized):
+  return "list_installed_apps",{},"Vou consultar os aplicativos instalados."
+ if re.search(r"\b(ler|mostrar|o que aparece|o que esta escrito)\b.*\b(tela|screen)\b",normalized):
+  return "get_screen_text",{},"Vou ler o conteúdo visível da tela."
+ if re.search(r"\b(voltar|volte|botao voltar)\b",normalized):
+  return "press_back",{},"Voltando uma tela."
+ if re.search(r"\b(tela inicial|ir para home|voltar para o inicio|ir para inicio)\b",normalized):
+  return "press_home",{},"Indo para a tela inicial."
+ if re.search(r"\b(rolar|descer)\b.*\b(baixo|para baixo)\b",normalized):
+  return "scroll_screen",{"direction":"down"},"Rolando a tela para baixo."
+ if re.search(r"\b(rolar|subir)\b.*\b(cima|para cima)\b",normalized):
+  return "scroll_screen",{"direction":"up"},"Rolando a tela para cima."
+ if re.search(r"\b(abrir|mostrar|selecionar)\b.*\b(arquivos|documentos|meus arquivos)\b",normalized):
+  return "open_file_picker",{"mime_type":"*/*"},"Abrindo o seletor de arquivos."
+ if re.search(r"\b(listar|mostrar)\b.*\b(arquivos|pastas)\b",normalized):
+  path_match=re.search(r"\b(?:pasta|em)\s+([a-z0-9_./ -]+)$",normalized)
+  return "list_files",{"path":path_match.group(1).strip() if path_match else ""},"Vou listar os arquivos disponíveis."
+ file_match=re.search(r"\b(?:ler|abrir)\s+(?:o\s+)?arquivo\s+(.+)$",text.strip(),re.I)
+ if file_match:
+  return "read_file",{"path":file_match.group(1).strip().strip('"')},"Vou ler esse arquivo."
+ tap_match=re.search(r"\b(?:toque|tocar|clique|clicar)\s+(?:em\s+)?(.+)$",text.strip(),re.I)
+ if tap_match:
+  return "tap_text",{"text":tap_match.group(1).strip()},"Vou localizar esse controle na tela."
+ type_match=re.search(r"\b(?:digite|escreva|preencha)\s+(.+)$",text.strip(),re.I)
+ if type_match:
+  return "type_text",{"text":type_match.group(1).strip()},"Vou preencher o campo que estiver selecionado."
+ app_match=re.search(r"\b(?:abra|abrir|abre|inicie|iniciar|execute|executar)\s+(?:o\s+)?(?:app\s+|aplicativo\s+)?(.+)$",text.strip(),re.I)
+ if app_match:
+  name=app_match.group(1).strip().strip(" .!?")
+  if name and len(name)<=80:
+   return "open_app",{"app_name":name},"Vou abrir "+name+"."
+ return None,{},None
+
 @app.post("/v1/chat",dependencies=[Depends(auth)])
 async def chat(p:ChatRequest):
- if not settings.model_base_url: raise HTTPException(503,"API BRUCE ativa, mas falta configurar BRUCE_MODEL_BASE_URL com o endpoint público do seu modelo. Ollama em 127.0.0.1 não é acessível pela nuvem.")
+ if not settings.model_base_url:
+  tool,args,offline_answer=offline_intent(p.messages[-1].content)
+  if offline_answer is None: raise HTTPException(503,"API BRUCE ativa. Para conversa livre, configure BRUCE_MODEL_BASE_URL com um modelo alcançável pela nuvem. Comandos diretos do Android continuam disponíveis.")
+  now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
+  with connect() as c:
+   c.execute("INSERT OR IGNORE INTO conversations VALUES(?,?,?,?)",(cid,"Nova conversa",now,now))
+   for message in p.messages:c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,message.role,message.content,now))
+   title=p.messages[0].content.strip()[:72] or "Nova conversa"
+   c.execute("UPDATE conversations SET updated_at=?,title=CASE WHEN title='Nova conversa' THEN ? ELSE title END WHERE id=?",(now,title,cid))
+   device=c.execute("SELECT id FROM devices WHERE last_seen>=? ORDER BY last_seen DESC LIMIT 1",(now-settings.device_online_seconds,)).fetchone()
+   queued=[]
+   if tool and device:
+    command_id=secrets.token_hex(12)
+    c.execute("INSERT INTO device_commands(id,device_id,tool,args,status,created_at) VALUES(?,?,?,?,?,?)",(command_id,device["id"],tool,json.dumps(args,ensure_ascii=False),"queued",now))
+    queued=[{"id":command_id,"tool":tool,"args":args}]
+    offline_answer+=" Comando enviado ao seu Samsung; aguardando confirmação."
+   elif tool and not device:
+    offline_answer="Não encontrei o Samsung conectado. Abra o BRUCE no celular, salve a conexão e ative o serviço antes de enviar comandos."
+   c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,"assistant",offline_answer,now));c.commit()
+  return {"conversation_id":cid,"message":offline_answer,"model":"BRUCE LOCAL COMMAND ROUTER","queued_actions":queued}
  now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
  with connect() as c:
   c.execute("INSERT OR IGNORE INTO conversations VALUES(?,?,?,?)",(cid,"Nova conversa",now,now))
