@@ -277,7 +277,7 @@ class MainActivity : ComponentActivity() {
                                                             val actionId = actions.optJSONObject(index)?.optString("id").orEmpty()
                                                             if (actionId.isNotBlank()) confirmations.add(awaitDeviceCommand(client, apiUrl, apiToken, actionId))
                                                         }
-                                                        if (confirmations.isNotEmpty()) answer += "\\n\\n" + confirmations.joinToString("\\n")
+                                                        if (confirmations.isNotEmpty()) answer += "\n\n" + confirmations.joinToString("\n")
                                                         handler.post {
                                                             if (id.isNotBlank()) {
                                                                 conversationId = id
