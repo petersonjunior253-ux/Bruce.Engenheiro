@@ -162,7 +162,7 @@ class WakeWordService : Service(), RecognitionListener {
         Thread {
             try {
                 val payload = JSONObject()
-                    .put("conversation_id", prefs.getString(BruceSecurePrefs.CONVERSATION_ID, JSONObject.NULL))
+                    .put("conversation_id", prefs.getString(BruceSecurePrefs.CONVERSATION_ID, null))
                     .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", command)))
                 val body = payload.toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder().url("$baseUrl/v1/chat")

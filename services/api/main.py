@@ -77,12 +77,8 @@ def startup():
 
 
 def require_auth(authorization: str | None = Header(default=None)):
-    if not settings.api_key or settings.api_key in {
-        "development-only-change-me",
-        "troque-por-um-segredo-longo-e-aleatorio",
-        "change-this-to-a-long-random-secret",
-    }:
-        raise HTTPException(503, "Configure uma BRUCE_API_KEY forte e exclusiva antes de expor a API.")
+    if not settings.api_key or settings.api_key == "development-only-change-me":
+        raise HTTPException(503, "Configure BRUCE_API_KEY antes de expor a API.")
     expected = "Bearer " + settings.api_key
     if not authorization or not hmac.compare_digest(authorization, expected):
         raise HTTPException(401, "Credencial inválida.")
