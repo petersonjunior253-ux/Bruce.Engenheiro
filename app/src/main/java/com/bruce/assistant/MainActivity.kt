@@ -58,6 +58,26 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result -> if (result[Manifest.permission.RECORD_AUDIO] == true) startBruceService() }
 
+    private fun awaitDeviceCommand(client: OkHttpClient, base: String, token: String, id: String): String {
+        repeat(18) {
+            try {
+                Thread.sleep(1500)
+                val request = Request.Builder().url("$base/v1/device/commands/$id")
+                    .header("Authorization", "Bearer $token").get().build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val data = JSONObject(response.body?.string().orEmpty())
+                        when (data.optString("status")) {
+                            "completed" -> return "Ação confirmada pelo dispositivo."
+                            "failed", "denied" -> return "Ação não concluída: " + data.optJSONObject("result")?.optString("error", "falha no dispositivo").orEmpty()
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        return "Comando enviado; aguardando confirmação do dispositivo."
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = BruceSecurePrefs.get(this)
@@ -249,8 +269,15 @@ class MainActivity : ComponentActivity() {
                                                         val raw = response.body?.string().orEmpty()
                                                         if (!response.isSuccessful) throw IllegalStateException("API HTTP ${response.code}")
                                                         val result = JSONObject(raw)
-                                                        val answer = result.optString("message")
+                                                        var answer = result.optString("message")
                                                         val id = result.optString("conversation_id")
+                                                        val actions = result.optJSONArray("queued_actions") ?: JSONArray()
+                                                        val confirmations = mutableListOf<String>()
+                                                        for (index in 0 until actions.length()) {
+                                                            val actionId = actions.optJSONObject(index)?.optString("id").orEmpty()
+                                                            if (actionId.isNotBlank()) confirmations.add(awaitDeviceCommand(client, apiUrl, apiToken, actionId))
+                                                        }
+                                                        if (confirmations.isNotEmpty()) answer += "\\n\\n" + confirmations.joinToString("\\n")
                                                         handler.post {
                                                             if (id.isNotBlank()) {
                                                                 conversationId = id
