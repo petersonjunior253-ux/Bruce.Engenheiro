@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +49,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+private const val DEFAULT_BRUCE_API_URL = "https://bruce-personal-api-petersonjunior253-8756s-projects.vercel.app"
+
 private data class BruceMessage(val role: String, val content: String)
 
 class MainActivity : ComponentActivity() {
@@ -58,7 +62,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = BruceSecurePrefs.get(this)
         setContent {
-            var apiUrl by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.API_URL, "") ?: "") }
+            var apiUrl by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.API_URL, DEFAULT_BRUCE_API_URL) ?: DEFAULT_BRUCE_API_URL) }
             var apiToken by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.API_TOKEN, "") ?: "") }
             var draftUrl by remember { mutableStateOf(apiUrl) }
             var draftToken by remember { mutableStateOf(apiToken) }
@@ -122,6 +126,20 @@ class MainActivity : ComponentActivity() {
                                     },
                                     modifier = Modifier.fillMaxWidth().padding(top = 9.dp)
                                 ) { Text("SALVAR CONEXÃO") }
+                                Spacer(Modifier.height(12.dp))
+                                Text("PERMISSÕES DO DISPOSITIVO", color = Color(0xFF9BB9D3), fontSize = 9.sp, letterSpacing = 1.sp)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    TextButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }, modifier = Modifier.weight(1f)) { Text("ACESSIBILIDADE", fontSize = 9.sp) }
+                                    TextButton(onClick = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }, modifier = Modifier.weight(1f)) { Text("NOTIFICAÇÕES", fontSize = 9.sp) }
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    TextButton(onClick = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+                                        }
+                                    }, modifier = Modifier.weight(1f)) { Text("ARQUIVOS", fontSize = 9.sp) }
+                                    TextButton(onClick = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }, modifier = Modifier.weight(1f)) { Text("PERMISSÕES DO APP", fontSize = 9.sp) }
+                                }
                             }
                         }
                         Column(Modifier.weight(1f).fillMaxWidth()) {
