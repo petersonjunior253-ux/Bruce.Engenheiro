@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var transcript: TextView
     private lateinit var apiUrl: EditText
     private lateinit var apiToken: EditText
+    private lateinit var wakeKey: EditText
     private val client = OkHttpClient.Builder().callTimeout(120, TimeUnit.SECONDS).build()
     private val prefs by lazy { getSharedPreferences("bruce", MODE_PRIVATE) }
     private val permissionLauncher = registerForActivityResult(
@@ -72,11 +73,19 @@ class MainActivity : Activity() {
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF8493A5.toInt())
         }
+        wakeKey = EditText(this).apply {
+            hint = "Picovoice Access Key (detector BRUCE)"
+            setSingleLine(true)
+            setText(prefs.getString("picovoice_access_key", ""))
+            setTextColor(0xFFFFFFFF.toInt())
+            setHintTextColor(0xFF8493A5.toInt())
+        }
         val save = Button(this).apply {
             text = "Salvar conexão segura"
             setOnClickListener {
                 prefs.edit().putString("api_url", apiUrl.text.toString().trim().trimEnd('/'))
-                    .putString("api_token", apiToken.text.toString().trim()).apply()
+                    .putString("api_token", apiToken.text.toString().trim())
+                    .putString("picovoice_access_key", wakeKey.text.toString().trim()).apply()
                 Toast.makeText(this@MainActivity, "Configuração salva neste aparelho", Toast.LENGTH_SHORT).show()
             }
         }
@@ -95,6 +104,7 @@ class MainActivity : Activity() {
         root.addView(label("O detector da palavra-chave funciona localmente. O áudio só é processado após a ativação."))
         root.addView(apiUrl)
         root.addView(apiToken)
+        root.addView(wakeKey)
         root.addView(save)
         root.addView(start)
         root.addView(stop)
