@@ -388,10 +388,17 @@ class WakeWordService : Service(), RecognitionListener {
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful) throw IllegalStateException("API retornou HTTP ${response.code}")
                     val result = JSONObject(raw)
-                    val answer = result.optString("message").takeIf { it.isNotBlank() }
+                    var answer = result.optString("message").takeIf { it.isNotBlank() }
                         ?: throw IllegalStateException("A API retornou uma resposta vazia.")
                     val id = result.optString("conversation_id")
                     if (id.isNotBlank()) prefs.edit().putString(BruceSecurePrefs.CONVERSATION_ID, id).apply()
+                    val actions = result.optJSONArray("queued_actions") ?: JSONArray()
+                    val confirmations = mutableListOf<String>()
+                    for (i in 0 until actions.length()) {
+                        val actionId = actions.optJSONObject(i)?.optString("id").orEmpty()
+                        if (actionId.isNotBlank()) confirmations.add(awaitCommandResult(baseUrl, token, actionId))
+                    }
+                    if (confirmations.isNotEmpty()) answer += " " + confirmations.joinToString(" ")
                     mainHandler.post { speakNeuralAndReturn(baseUrl, token, answer) }
                 }
             } catch (error: Exception) {
@@ -400,6 +407,26 @@ class WakeWordService : Service(), RecognitionListener {
                 }
             }
         }.start()
+    }
+
+    private fun awaitCommandResult(base: String, token: String, id: String): String {
+        repeat(18) {
+            try {
+                Thread.sleep(1500)
+                val request = Request.Builder().url("$base/v1/device/commands/$id")
+                    .header("Authorization", "Bearer $token").get().build()
+                http.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val data = JSONObject(response.body?.string().orEmpty())
+                        when (data.optString("status")) {
+                            "completed" -> return "Ação confirmada pelo celular."
+                            "failed", "denied" -> return "A ação não foi concluída: " + data.optJSONObject("result")?.optString("error", "falha no dispositivo").orEmpty()
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        return "Enviei o comando, mas ainda não recebi a confirmação do celular."
     }
 
     private fun localFallback(command: String): String {
