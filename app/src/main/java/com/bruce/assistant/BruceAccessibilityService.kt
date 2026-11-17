@@ -67,11 +67,11 @@ class BruceAccessibilityService : AccessibilityService() {
     fun back(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
     fun home(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 
-    private fun findNode(node: AccessibilityNodeInfo?, predicate: (AccessibilityNodeInfo) -> Boolean, depth: Int = 0): AccessibilityNodeInfo? {
+    private fun findNode(node: AccessibilityNodeInfo?, depth: Int = 0, predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         if (node == null || depth > 30) return null
         if (predicate(node)) return node
         for (i in 0 until node.childCount) {
-            val found = findNode(node.getChild(i), predicate, depth + 1)
+            val found = findNode(node.getChild(i), depth + 1, predicate)
             if (found != null) return found
         }
         return null
