@@ -41,7 +41,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("BRUCE_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","),
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
