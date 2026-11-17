@@ -44,6 +44,7 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onPartialResult(hypothesis: String?) = checkWakeWord(hypothesis)
     override fun onResult(hypothesis: String?) = checkWakeWord(hypothesis)
     override fun onFinalResult(hypothesis: String?) = checkWakeWord(hypothesis)
+    override fun onError(exception: Exception) { updateNotification("Erro no microfone: ${exception.message}") }
     override fun onTimeout() { speech?.startListening(this) }
     private fun checkWakeWord(raw: String?) {
         if (raw.isNullOrBlank()) return
