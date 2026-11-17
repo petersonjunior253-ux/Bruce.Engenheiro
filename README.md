@@ -30,7 +30,7 @@ npm run dev
 
 ## Planned architecture
 
-- `apps/web`: responsive assistant UI and browser voice prototype.
+- `src/`: responsive assistant UI and browser voice prototype.
 - `apps/windows`: planned Windows companion with local wake-word detection.
 - `apps/android`: planned Android companion with an explicitly enabled foreground voice service.
 - `services/api`: planned secure backend for model calls, device pairing, preferences and action approvals.
