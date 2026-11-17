@@ -137,7 +137,7 @@ async def health():
      storage="error"
   except Exception:
    storage="error"
- return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Anthropic" if settings.anthropic_api_key else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+ return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Anthropic" if settings.model_provider.lower()=="anthropic" else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 def offline_intent(text:str):
  normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
  normalized=normalized.replace("wi-fi","wifi")
@@ -266,7 +266,7 @@ async def chat(p:ChatRequest):
   answer=(answer+"\n\nNo momento, seu Android não está conectado ao núcleo BRUCE.").strip()
  if not answer:answer="Não recebi uma resposta válida do modelo."
  with connect() as c:c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,"assistant",answer,int(time.time())));c.commit()
- return {"conversation_id":cid,"message":answer,"model":settings.model_name,"queued_actions":queued}
+ return {"conversation_id":cid,"message":answer,"model":settings.model_name,"model_provider":"Anthropic" if settings.anthropic_api_key else "OpenAI-compatible","queued_actions":queued}
 @app.post("/v1/device/register",dependencies=[Depends(auth)])
 def register_device(p:DeviceRegistration):
  with connect() as c:c.execute("INSERT INTO devices(id,name,platform,last_seen,metadata) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,platform=excluded.platform,last_seen=excluded.last_seen,metadata=excluded.metadata",(p.device_id,p.name,p.platform,int(time.time()),json.dumps(p.metadata)));c.commit()
