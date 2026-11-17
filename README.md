@@ -6,14 +6,14 @@ BRUCE é um projeto de assistente pessoal próprio, com cliente Android nativo, 
 
 | Camada | Implementado no repositório | Ainda precisa ser feito/testado |
 |---|---|---|
-| Android | App Kotlin/Compose, interface inicial, serviço foreground de microfone, wake word Vosk em português e TTS local | Teste em Samsung/Android 14, diálogo contínuo robusto, ações Android e UX final |
+| Android | App Kotlin/Compose com chat nativo, conexão HTTPS privada, serviço foreground, wake word Vosk offline em português e TTS do Android | Teste em Samsung/Android 14, TTS neural próprio, ações Android e diálogo contínuo robusto |
 | API | FastAPI, autenticação Bearer, SQLite, chat compatível com API OpenAI, histórico e memória persistente | Deploy HTTPS, gestão de dispositivos/usuários, limites, observabilidade e testes automatizados |
 | IA | Adaptador de endpoint compatível; padrão local Ollama `http://127.0.0.1:11434/v1`, modelo `llama3.2` | Escolha/benchmark de modelo, roteamento, ferramentas e avaliação de qualidade |
 | Voz | Reconhecimento de palavra-chave offline no Android e voz TTS do dispositivo | STT/TTS neural de alta qualidade, streaming, interrupção e conversa full-duplex |
 | Automações | Serviço Android preparado para receber comandos de voz | Camada de ferramentas com permissões, confirmação e registro de execução |
-| Web | Prévia visual hospedada separadamente | Interface final conectada à API real; a prévia antiga não é o produto final |
+| Web/PWA | Workspace React/Vite com histórico, chat, configurações, memória editável, reconhecimento de voz no navegador e palavra BRUCE enquanto a página está aberta | Conectar a API hospedada, testar em navegadores reais, notificações push e voz neural própria |
 
-**Não considere uma capacidade pronta apenas porque existe uma tela ou endpoint.** A coluna de implementação é código presente; a segunda coluna é trabalho pendente.
+**Não considere uma capacidade pronta apenas porque existe uma tela ou endpoint.** A coluna de implementação é código presente; a segunda coluna é trabalho pendente. A interface web atual está publicada em https://bruce-preview-six.vercel.app.
 
 ## Princípios do BRUCE
 
