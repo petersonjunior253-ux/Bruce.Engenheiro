@@ -18,7 +18,9 @@ class Settings(BaseSettings):
  api_key:str="development-only-change-me"
  model_base_url:str=os.getenv("BRUCE_MODEL_BASE_URL", "" if os.getenv("VERCEL") else "http://127.0.0.1:11434/v1")
  model_api_key:str=""
- model_name:str="llama3.2"
+ anthropic_api_key:str=""
+ model_provider:str="anthropic"
+ model_name:str="claude-sonnet-5-5"
  system_prompt:str="Você é BRUCE, assistente pessoal privado do usuário. Responda em português brasileiro, seja inteligente, direto, natural e proativo. Nunca afirme que executou algo sem confirmação do dispositivo. Para ações críticas, peça autorização explícita. Use ferramentas reais quando disponíveis."
  max_context_messages:int=80
  max_output_tokens:int=4096
@@ -135,7 +137,7 @@ async def health():
      storage="error"
   except Exception:
    storage="error"
- return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+ return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Anthropic" if settings.anthropic_api_key else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 def offline_intent(text:str):
  normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
  normalized=normalized.replace("wi-fi","wifi")
@@ -189,7 +191,7 @@ def offline_intent(text:str):
 
 @app.post("/v1/chat",dependencies=[Depends(auth)])
 async def chat(p:ChatRequest):
- if not settings.model_base_url:
+ if not (settings.anthropic_api_key or settings.model_base_url):
   tool,args,offline_answer=offline_intent(p.messages[-1].content)
   if offline_answer is None: raise HTTPException(503,"API BRUCE ativa. Para conversa livre, configure BRUCE_MODEL_BASE_URL com um modelo alcançável pela nuvem. Comandos diretos do Android continuam disponíveis.")
   now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
@@ -226,15 +228,27 @@ async def chat(p:ChatRequest):
   context+="\n\nResultados recentes de ações no dispositivo (use apenas como histórico, não repita sem pedido):\n"+"\n".join(f"- {x['tool']}: {x['status']} — {x['result'] or 'sem retorno'}" for x in recent)
  else:context+="\n\nNenhum dispositivo Android está conectado agora. Não diga que executou ações no aparelho."
  messages=[{"role":"system","content":context}]+[{"role":x["role"],"content":x["content"]} for x in reversed(old)]+[{"role":m.role,"content":m.content} for m in p.messages]
- body={"model":settings.model_name,"messages":messages,"max_tokens":settings.max_output_tokens,"tools":TOOLS,"tool_choice":"auto"}
- headers={"Content-Type":"application/json"}
- if settings.model_api_key:headers["Authorization"]="Bearer "+settings.model_api_key
+ calls=[]
  try:
   async with httpx.AsyncClient(timeout=httpx.Timeout(150,connect=15)) as client:
-   r=await client.post(settings.model_base_url.rstrip("/")+"/chat/completions",headers=headers,json=body);r.raise_for_status();data=r.json()
-  choice=data["choices"][0]["message"];answer=choice.get("content") or ""
-  calls=choice.get("tool_calls") or []
- except httpx.HTTPStatusError as e:raise HTTPException(502,f"Provedor de IA retornou HTTP {e.response.status_code}.")
+   if settings.anthropic_api_key:
+    anthropic_tools=[{"name":x["function"]["name"],"description":x["function"]["description"],"input_schema":x["function"]["parameters"]} for x in TOOLS]
+    anthropic_messages=[{"role":x["role"],"content":x["content"]} for x in messages if x["role"]!="system"]
+    body={"model":settings.model_name,"system":context,"messages":anthropic_messages,"max_tokens":settings.max_output_tokens,"tools":anthropic_tools}
+    headers={"Content-Type":"application/json","x-api-key":settings.anthropic_api_key,"anthropic-version":"2026-10-21"}
+    r=await client.post("https://api.anthropic.com/v1/messages",headers=headers,json=body);r.raise_for_status();data=r.json()
+    blocks=data.get("content",[])
+    answer="\\n".join(x.get("text","") for x in blocks if x.get("type")=="text").strip()
+    calls=[{"function":{"name":x.get("name"),"arguments":json.dumps(x.get("input",{}),ensure_ascii=False)}} for x in blocks if x.get("type")=="tool_use"]
+   else:
+    body={"model":settings.model_name,"messages":messages,"max_tokens":settings.max_output_tokens,"tools":TOOLS,"tool_choice":"auto"}
+    headers={"Content-Type":"application/json"}
+    if settings.model_api_key:headers["Authorization"]="Bearer "+settings.model_api_key
+    r=await client.post(settings.model_base_url.rstrip("/")+"/chat/completions",headers=headers,json=body);r.raise_for_status();data=r.json()
+    choice=data["choices"][0]["message"];answer=choice.get("content") or "";calls=choice.get("tool_calls") or []
+ except httpx.HTTPStatusError as e:
+  detail="A chave Anthropic foi recusada. Confira BRUCE_ANTHROPIC_API_KEY e os créditos da conta." if settings.anthropic_api_key and e.response.status_code in (401,403) else f"Provedor de IA retornou HTTP {e.response.status_code}."
+  raise HTTPException(502,detail)
  except (httpx.HTTPError,KeyError,ValueError) as e:raise HTTPException(502,"Não foi possível consultar o modelo configurado.")
  queued=[]
  if calls and devices:
@@ -314,4 +328,4 @@ def delete_memory(mid:int):
 @app.get("/v1/capabilities",dependencies=[Depends(auth)])
 def capabilities():
  with connect() as c:online=c.execute("SELECT COUNT(*) FROM devices WHERE last_seen>=?",(int(time.time())-settings.device_online_seconds,)).fetchone()[0]>0
- return {"assistant":"BRUCE","chat":True,"persistent_memory":True,"device_bridge":"queue_ready","android_connected":online,"tools":[x["function"]["name"] for x in TOOLS],"note":"A fila de comandos requer o aplicativo Android com o serviço de ponte ativo."}
+ return {"assistant":"BRUCE","chat":bool(settings.anthropic_api_key or settings.model_base_url),"persistent_memory":True,"device_bridge":"queue_ready","android_connected":online,"tools":[x["function"]["name"] for x in TOOLS],"note":"A fila de comandos requer o aplicativo Android com o serviço de ponte ativo."}
