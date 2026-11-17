@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal,Any
 import httpx
 from fastapi import Depends,FastAPI,Header,HTTPException,Query
-from fastapi.responses import Response
+from fastapi.responses import Response,JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from pydantic_settings import BaseSettings,SettingsConfigDict
@@ -56,12 +56,13 @@ async def durable_private_state(request, call_next):
   except blob.BlobNotFoundError:
    init_db()
   except Exception:
-   raise HTTPException(503,"O armazenamento privado do BRUCE está indisponível; os dados não foram alterados.")
+   return JSONResponse({"detail":"O armazenamento privado do BRUCE está indisponível; os dados não foram alterados."},status_code=503)
   response=await call_next(request)
-  try:
-   await blob.put_blob(blob_path,db.read_bytes(),access="private",allow_overwrite=True,content_type="application/vnd.sqlite3",cache_control_max_age=60)
-  except Exception:
-   raise HTTPException(503,"Não consegui salvar a memória persistente do BRUCE. A operação não foi confirmada.")
+  if response.status_code < 500:
+   try:
+    await blob.put_blob(blob_path,db.read_bytes(),access="private",allow_overwrite=True,content_type="application/vnd.sqlite3",cache_control_max_age=60)
+   except Exception:
+    return JSONResponse({"detail":"Não consegui salvar a memória persistente do BRUCE. A operação não foi confirmada."},status_code=503)
   return response
 
 def auth(authorization:str|None=Header(default=None)):
