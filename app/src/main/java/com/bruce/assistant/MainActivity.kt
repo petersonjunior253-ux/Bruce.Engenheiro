@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,10 +21,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -116,16 +126,59 @@ class MainActivity : ComponentActivity() {
                         }
                         Column(Modifier.weight(1f).fillMaxWidth()) {
                             if (messages.size == 1 && messages[0].role == "assistant") {
+                                val orbitTransition = rememberInfiniteTransition(label = "bruce-neural-core")
+                                val orbitRotation by orbitTransition.animateFloat(
+                                    initialValue = 0f, targetValue = 360f,
+                                    animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing)),
+                                    label = "orbit-rotation"
+                                )
                                 Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    Box(
-                                        Modifier.size(145.dp).background(Brush.radialGradient(listOf(Color(0xFF315D80), Color(0xFF12263B), Color(0xFF080A0D))), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Box(Modifier.size(90.dp).background(Brush.radialGradient(listOf(Color(0xFFE5F6FF), Color(0xFF67B9F2), Color(0xFF174C80))), CircleShape))
+                                    Canvas(Modifier.size(250.dp)) {
+                                        val centerPoint = Offset(size.width / 2f, size.height / 2f)
+                                        rotate(orbitRotation) {
+                                            drawOval(
+                                                color = Color(0x668CCBFA),
+                                                topLeft = Offset(size.width * 0.04f, size.height * 0.32f),
+                                                size = Size(size.width * 0.92f, size.height * 0.36f),
+                                                style = Stroke(width = 1.3.dp.toPx())
+                                            )
+                                        }
+                                        rotate(-orbitRotation * 0.72f) {
+                                            drawOval(
+                                                color = Color(0x557DBBE8),
+                                                topLeft = Offset(size.width * 0.29f, size.height * 0.04f),
+                                                size = Size(size.width * 0.42f, size.height * 0.92f),
+                                                style = Stroke(width = 1.1.dp.toPx())
+                                            )
+                                        }
+                                        rotate(orbitRotation * 0.43f) {
+                                            drawOval(
+                                                color = Color(0x447CB8E4),
+                                                topLeft = Offset(size.width * 0.13f, size.height * 0.16f),
+                                                size = Size(size.width * 0.74f, size.height * 0.68f),
+                                                style = Stroke(width = 1.dp.toPx())
+                                            )
+                                        }
+                                        drawCircle(
+                                            brush = Brush.radialGradient(
+                                                colors = listOf(Color(0xFFBFE9FF), Color(0xFF4A91C5), Color(0xFF10263B), Color(0xFF05090F)),
+                                                center = centerPoint,
+                                                radius = size.minDimension * 0.29f
+                                            ),
+                                            radius = size.minDimension * 0.22f,
+                                            center = centerPoint
+                                        )
+                                        drawCircle(
+                                            color = Color(0xFFB4E4FF),
+                                            radius = size.minDimension * 0.22f,
+                                            center = centerPoint,
+                                            style = Stroke(width = 1.4.dp.toPx())
+                                        )
                                     }
-                                    Text("O QUE VAMOS RESOLVER?", color = Color(0xFFEAF2F8), fontSize = 20.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 24.dp))
-                                    Text("Converse por texto ou chame pelo nome BRUCE.", color = Color(0xFF8291A1), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                                    Button(onClick = { activateVoice() }, modifier = Modifier.padding(top = 17.dp)) { Text("ATIVAR VOZ · BRUCE") }
+                                    Text("PROTOCOLO", color = Color(0xFF91B6D2), fontSize = 9.sp, letterSpacing = 5.sp, modifier = Modifier.padding(top = 1.dp))
+                                    Text("BRUCE WAYNE", color = Color(0xFFEAF2F8), fontSize = 25.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Text("INTELIGÊNCIA PESSOAL · SISTEMA AUTÔNOMO", color = Color(0xFF8291A1), fontSize = 8.sp, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Button(onClick = { activateVoice() }, modifier = Modifier.padding(top = 20.dp)) { Text("ATIVAR BRUCE · VOZ OFFLINE") }
                                 }
                             } else {
                                 LazyColumn(
