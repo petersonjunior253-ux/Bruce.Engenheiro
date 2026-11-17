@@ -173,6 +173,7 @@ class MainActivity : Activity() {
         Thread {
             try {
                 val payload = JSONObject()
+                    .put("conversation_id", prefs.getString("conversation_id", JSONObject.NULL))
                     .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", text)))
                 val body = payload.toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder().url("$base/v1/chat")
@@ -180,7 +181,9 @@ class MainActivity : Activity() {
                 client.newCall(request).execute().use { response ->
                     val result = response.body?.string().orEmpty()
                     if (!response.isSuccessful) throw IllegalStateException("API HTTP ${response.code}: $result")
-                    val answer = JSONObject(result).optString("message", "Resposta vazia")
+                    val parsed = JSONObject(result)
+                    val answer = parsed.optString("message", "Resposta vazia")
+                    prefs.edit().putString("conversation_id", parsed.optString("conversation_id")).apply()
                     runOnUiThread {
                         transcript.text = "BRUCE: $answer"
                         val tts = android.speech.tts.TextToSpeech(this) { code ->
