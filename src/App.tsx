@@ -26,7 +26,7 @@ const welcome: Message = { role: "assistant", text: "Estou aqui. Sou BRUCE, seu 
 
 export default function App() {
   const [apiUrl, setApiUrl] = useState(localStorage.getItem(API_URL_KEY) || "");
-  const [token, setToken] = useState(localStorage.getItem(API_TOKEN_KEY) || "");
+  const [token, setToken] = useState(sessionStorage.getItem(API_TOKEN_KEY) || "");
   const [messages, setMessages] = useState<Message[]>([welcome]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -55,6 +55,7 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const wakeArmed = useRef(false);
+  const wakeActive = useRef(false);
 
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
     if (!apiUrl || !token) throw new Error("Configure a URL e o token privado da API BRUCE.");
@@ -158,7 +159,7 @@ export default function App() {
       setError("Use HTTPS para conexões fora do ambiente local."); return;
     }
     setApiUrl(url); setToken(secret);
-    localStorage.setItem(API_URL_KEY, url); localStorage.setItem(API_TOKEN_KEY, secret);
+    localStorage.setItem(API_URL_KEY, url); sessionStorage.setItem(API_TOKEN_KEY, secret);
     setSettingsOpen(false); setError("Conexão salva neste navegador.");
     setTimeout(() => setError(""), 3500);
   };
@@ -193,18 +194,18 @@ export default function App() {
     engine.onend = () => {
       if (wakeMode && wakeArmed.current) { wakeArmed.current = false; return; }
       setListening(false);
-      if (wakeMode && wakeEnabled) {
+      if (wakeMode && wakeActive.current) {
         try { engine.start(); setListening(true); } catch { setWakeEnabled(false); }
       }
     };
     recognition.current = engine;
-    try { engine.start(); setListening(true); setWakeEnabled(wakeMode); setStatus(wakeMode ? "Aguardando a palavra BRUCE…" : "Ouvindo você…"); }
+    try { engine.start(); setListening(true); setWakeEnabled(wakeMode); wakeActive.current = wakeMode; setStatus(wakeMode ? "Aguardando a palavra BRUCE…" : "Ouvindo você…"); }
     catch { setListening(false); setWakeEnabled(false); setError("Não foi possível iniciar o microfone."); }
   };
 
   const stopListening = () => {
     wakeArmed.current = true;
-    recognition.current?.stop(); setListening(false); setWakeEnabled(false); setStatus("Microfone pausado");
+    recognition.current?.stop(); setListening(false); setWakeEnabled(false); wakeActive.current = false; setStatus("Microfone pausado");
   };
 
   const saveMemory = async () => {
@@ -275,7 +276,7 @@ export default function App() {
       <footer className="app-footer"><span>BRUCE PESSOAL · IA INDEPENDENTE</span><span>Verifique ações importantes antes de confirmar.</span></footer>
     </main>
 
-    {settingsOpen && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}><section className="settings-panel"><div className="panel-heading"><div><small>CONFIGURAÇÃO DO SISTEMA</small><h2>Conexão privada</h2></div><button className="ghost icon-only" onClick={() => setSettingsOpen(false)}><X size={18}/></button></div><p className="panel-copy">Conecte sua própria API. A chave do provedor de IA permanece no servidor; aqui entra apenas o token privado do dispositivo.</p><label>ENDEREÇO HTTPS DA API<input value={draftUrl} onChange={e => setDraftUrl(e.target.value)} placeholder="https://sua-api.com"/></label><label>TOKEN PRIVADO DO BRUCE<input type="password" value={draftToken} onChange={e => setDraftToken(e.target.value)} placeholder="Token do dispositivo"/></label><div className="security-callout"><ShieldCheck size={17}/><span>Não coloque sua chave de provedor aqui. Use somente o token de acesso do BRUCE.</span></div><div className="panel-actions"><button className="button-muted" onClick={() => setSettingsOpen(false)}>Cancelar</button><button className="button-primary" onClick={() => void saveConnection()}><Check size={15}/> Salvar conexão</button></div><button className="text-danger" onClick={() => { localStorage.removeItem(API_URL_KEY); localStorage.removeItem(API_TOKEN_KEY); setApiUrl(""); setToken(""); setDraftUrl(""); setDraftToken(""); setConnected(false); setSettingsOpen(false); }}>Desconectar e limpar credenciais deste navegador</button></section></div>}
+    {settingsOpen && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}><section className="settings-panel"><div className="panel-heading"><div><small>CONFIGURAÇÃO DO SISTEMA</small><h2>Conexão privada</h2></div><button className="ghost icon-only" onClick={() => setSettingsOpen(false)}><X size={18}/></button></div><p className="panel-copy">Conecte sua própria API. A chave do provedor de IA permanece no servidor; aqui entra apenas o token privado do dispositivo.</p><label>ENDEREÇO HTTPS DA API<input value={draftUrl} onChange={e => setDraftUrl(e.target.value)} placeholder="https://sua-api.com"/></label><label>TOKEN PRIVADO DO BRUCE<input type="password" value={draftToken} onChange={e => setDraftToken(e.target.value)} placeholder="Token do dispositivo"/></label><div className="security-callout"><ShieldCheck size={17}/><span>Não coloque sua chave de provedor aqui. Use somente o token de acesso do BRUCE.</span></div><div className="panel-actions"><button className="button-muted" onClick={() => setSettingsOpen(false)}>Cancelar</button><button className="button-primary" onClick={() => void saveConnection()}><Check size={15}/> Salvar conexão</button></div><button className="text-danger" onClick={() => { localStorage.removeItem(API_URL_KEY); sessionStorage.removeItem(API_TOKEN_KEY); setApiUrl(""); setToken(""); setDraftUrl(""); setDraftToken(""); setConnected(false); setSettingsOpen(false); }}>Desconectar e limpar credenciais deste navegador</button></section></div>}
 
     {memoryOpen && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setMemoryOpen(false); }}><section className="settings-panel memory-panel"><div className="panel-heading"><div><small>CONTEXTO PESSOAL</small><h2>Memória do BRUCE</h2></div><button className="ghost icon-only" onClick={() => setMemoryOpen(false)}><X size={18}/></button></div><p className="panel-copy">Informações salvas aqui podem ser usadas como contexto nas conversas. Você controla o que fica armazenado.</p><div className="memory-form"><select value={memoryCategory} onChange={e => setMemoryCategory(e.target.value)}><option>preferência</option><option>rotina</option><option>objetivo</option><option>projeto</option><option>pessoal</option></select><textarea value={memoryDraft} onChange={e => setMemoryDraft(e.target.value)} placeholder="Ex.: Prefiro respostas diretas e instruções práticas…"/><button className="button-primary" onClick={() => void saveMemory()} disabled={!memoryDraft.trim()}><Plus size={15}/> Salvar memória</button></div><div className="memory-list">{memories.map(m => <article key={m.id}><div><small>{m.category.toUpperCase()}</small><p>{m.content}</p></div><button className="ghost icon-only" title="Apagar memória" onClick={() => void deleteMemory(m.id)}><Trash2 size={15}/></button></article>)}{memories.length === 0 && <div className="empty-memory">Nenhuma memória salva ainda.</div>}</div></section></div>}
   </div>;
