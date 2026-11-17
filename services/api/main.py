@@ -4,9 +4,11 @@ from pathlib import Path
 from typing import Literal,Any
 import httpx
 from fastapi import Depends,FastAPI,Header,HTTPException,Query
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from pydantic_settings import BaseSettings,SettingsConfigDict
+import edge_tts
 
 class Settings(BaseSettings):
  model_config=SettingsConfigDict(env_prefix="BRUCE_",env_file=".env",extra="ignore")
@@ -51,8 +53,9 @@ class DeviceRegistration(BaseModel):
  device_id:str=Field(min_length=6,max_length=100);name:str="BRUCE Android";platform:str="android";metadata:dict[str,Any]={}
 class CommandResult(BaseModel):
  status:Literal["completed","failed","denied"];result:dict[str,Any]={}
-class ToolApproval(BaseModel):
- approved:bool
+class VoiceRequest(BaseModel):
+ text:str=Field(min_length=1,max_length=12000)
+ voice:str="pt-BR-AntonioNeural"
 TOOLS=[
  {"type":"function","function":{"name":"open_app","description":"Abrir um aplicativo instalado no Android do usuário pelo nome ou pacote.","parameters":{"type":"object","properties":{"package_name":{"type":"string"},"app_name":{"type":"string"}},"required":["package_name"]}}},
  {"type":"function","function":{"name":"create_calendar_event","description":"Criar um evento no calendário Android. O aplicativo mostrará a tela de confirmação antes de salvar.","parameters":{"type":"object","properties":{"title":{"type":"string"},"start_iso":{"type":"string"},"end_iso":{"type":"string"},"description":{"type":"string"}},"required":["title","start_iso"]}}},
@@ -63,6 +66,19 @@ TOOLS=[
  {"type":"function","function":{"name":"get_device_info","description":"Consultar informações básicas do dispositivo conectado.","parameters":{"type":"object","properties":{} } }},
  {"type":"function","function":{"name":"list_installed_apps","description":"Listar aplicativos instalados e visíveis no Android.","parameters":{"type":"object","properties":{} } }}
 ]
+@app.post("/v1/voice",dependencies=[Depends(auth)])
+async def neural_voice(p:VoiceRequest):
+ voice=p.voice if p.voice in {"pt-BR-AntonioNeural","pt-BR-FranciscaNeural"} else "pt-BR-AntonioNeural"
+ try:
+  audio=bytearray()
+  communicator=edge_tts.Communicate(p.text,voice=voice,rate="+0%",pitch="+0Hz")
+  async for chunk in communicator.stream():
+   if chunk.get("type")=="audio":audio.extend(chunk.get("data",b""))
+  if not audio:raise RuntimeError("O serviço de voz não retornou áudio.")
+  return Response(content=bytes(audio),media_type="audio/mpeg",headers={"Cache-Control":"no-store"})
+ except Exception as e:
+  raise HTTPException(502,"Não foi possível gerar a voz neural agora.") from e
+
 @app.get("/health")
 def health():
  return {"status":"ok","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_name),"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
