@@ -111,7 +111,7 @@ def health():
         "status": "ok",
         "service": "BRUCE Personal Intelligence API",
         "model_configured": bool(settings.model_name),
-        "model_provider": "ollama-compatible",
+        "model_provider": "OpenAI-compatible endpoint",
         "voice": "client-or-device",
         "database": "sqlite",
         "time": int(time.time()),
@@ -267,7 +267,7 @@ def capabilities():
         "chat": True,
         "persistent_conversations": True,
         "persistent_memory": True,
-        "model": {"name": settings.model_name, "base_url": settings.model_base_url},
+        "model": {"name": settings.model_name, "base_url": settings.model_base_url, "provider_auth_configured": bool(settings.model_api_key)},
         "tools": {"android_actions": False, "web_search": False, "calendar": False, "notifications": False},
         "note": "Capacidades só são anunciadas como ativas quando há uma integração real conectada.",
     }
