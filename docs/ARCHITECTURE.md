@@ -1,29 +1,27 @@
-# Arquitetura BRUCE — IA independente
+# BRUCE architecture
 
-## Princípio
-BRUCE é um produto independente. A API BRUCE é o backend e o proprietário escolhe o motor neural. A configuração inicial aponta para Ollama local. Não há dependência obrigatória da OpenAI ou da API do ChatGPT.
+## Product principle
 
-## Fluxo
-1. Detector de palavra-chave executa localmente no Android.
-2. O app captura a fala após a ativação.
-3. A fala é convertida em texto no dispositivo/serviço Android.
-4. O app envia texto para a API BRUCE autenticada por HTTPS.
-5. A API carrega histórico e memórias do SQLite.
-6. A API consulta o modelo configurado (Ollama por padrão).
-7. A resposta retorna ao app para fala em português.
+BRUCE is the personalized interface and device companion. ChatGPT remains the intended intelligence experience through a secure model-provider connection; BRUCE does not claim to recreate or enlarge a proprietary neural model.
 
-## Responsabilidades
-- App Android: voz, interface, permissões, notificações e ações no dispositivo.
-- API BRUCE: autenticação, histórico, memória, contexto, roteamento de modelo e ferramentas futuras.
-- Motor de IA: geração e raciocínio, conforme o modelo escolhido e os recursos de hardware.
+## Runtime
 
-## Segurança
-- Chave do motor de IA somente no servidor.
-- Token do dispositivo separado da chave do motor.
-- HTTPS em produção.
-- Ações sensíveis, externas, financeiras ou irreversíveis exigem confirmação.
-- Nenhuma saída do modelo pode ser executada como shell arbitrário.
-- Detecção da palavra-chave é local; o áudio do detector não é enviado à API.
+1. Local wake-word detector runs on the device.
+2. After detecting BRUCE, the native companion opens the assistant experience or starts an explicitly authorized capture session.
+3. Speech recognition transcribes the user's command.
+4. The client sends text to the authenticated BRUCE API.
+5. API retrieves conversation history and saved memory, then calls the configured model provider.
+6. The answer returns to the client for display and text-to-speech.
 
-## Limites
-A memória persistente recupera contexto, mas não amplia o limite nativo de contexto do modelo. A qualidade e velocidade dependem do modelo, quantização, RAM, GPU/CPU e hardware do host.
+## Security boundaries
+
+- Model provider credentials stay on the server.
+- Device API token is separate from provider key.
+- No arbitrary shell execution from model output.
+- Sensitive actions require user confirmation.
+- Wake-word detection is local; raw microphone audio is not uploaded by the wake listener.
+- Public deployment requires TLS, rate limiting, abuse controls, secret rotation and a production database.
+
+## Context
+
+Long context is limited by the chosen model's actual context window. BRUCE stores conversations and explicit memories, then selects a bounded recent window. Future retrieval-augmented memory can search older conversation segments. Storage does not itself expand a model's context capacity or intelligence.

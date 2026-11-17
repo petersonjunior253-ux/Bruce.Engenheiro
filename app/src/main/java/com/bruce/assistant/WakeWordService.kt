@@ -13,6 +13,11 @@ import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -22,6 +27,7 @@ import org.vosk.android.StorageService
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class WakeWordService : Service(), RecognitionListener {
     private var speech: SpeechService? = null
@@ -32,6 +38,8 @@ class WakeWordService : Service(), RecognitionListener {
     private var commandHandled = false
     private var lastWakeAt = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS).callTimeout(190, TimeUnit.SECONDS).build()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
@@ -141,23 +149,55 @@ class WakeWordService : Service(), RecognitionListener {
         if (commandHandled) return
         if (System.currentTimeMillis() - lastWakeAt < 1800 && command.trim().equals("bruce", ignoreCase = true)) return
         commandHandled = true
+        val prefs = BruceSecurePrefs.get(this)
+        val baseUrl = prefs.getString(BruceSecurePrefs.API_URL, "").orEmpty().trim().trimEnd('/')
+        val token = prefs.getString(BruceSecurePrefs.API_TOKEN, "").orEmpty().trim()
+        if (baseUrl.isBlank() || token.isBlank()) {
+            speakAndReturn(localFallback(command))
+            return
+        }
+        awaitingCommand = false
+        stopSpeech()
+        updateNotification("Consultando a inteligência própria do BRUCE.")
+        Thread {
+            try {
+                val payload = JSONObject()
+                    .put("conversation_id", prefs.getString(BruceSecurePrefs.CONVERSATION_ID, JSONObject.NULL))
+                    .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", command)))
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder().url("$baseUrl/v1/chat")
+                    .header("Authorization", "Bearer $token")
+                    .post(body).build()
+                http.newCall(request).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) throw IllegalStateException("API retornou HTTP ${response.code}")
+                    val result = JSONObject(raw)
+                    val answer = result.optString("message").takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("A API retornou uma resposta vazia.")
+                    val id = result.optString("conversation_id")
+                    if (id.isNotBlank()) prefs.edit().putString(BruceSecurePrefs.CONVERSATION_ID, id).apply()
+                    mainHandler.post { speakAndReturn(answer) }
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    speakAndReturn("Não consegui acessar a inteligência do BRUCE. Verifique a conexão com sua API. Detalhe: ${error.message ?: "erro de rede"}.")
+                }
+            }
+        }.start()
+    }
+
+    private fun localFallback(command: String): String {
         val normalized = command.lowercase(Locale("pt", "BR"))
-        val answer = when {
+        return when {
             normalized.contains("que horas") || normalized.contains("horário") ->
                 "Agora são " + SimpleDateFormat("HH:mm", Locale("pt", "BR")).format(Date()) + "."
             normalized.contains("que dia") || normalized.contains("data de hoje") ->
                 "Hoje é " + SimpleDateFormat("EEEE, d 'de' MMMM", Locale("pt", "BR")).format(Date()) + "."
             normalized.contains("seu nome") || normalized.contains("quem é você") ->
-                "Eu sou BRUCE, seu assistente pessoal."
-            normalized.contains("obrigado") || normalized.contains("obrigada") ->
-                "Sempre à disposição."
-            normalized.contains("parar") || normalized.contains("silêncio") ->
-                "Tudo bem. Continuarei aguardando quando você me chamar."
+                "Eu sou BRUCE, seu assistente pessoal. Configure a API própria para ativar minha inteligência conversacional."
             else ->
-                "Ouvi você dizer: $command. Minha conexão com a inteligência conversacional ainda precisa ser configurada. Por enquanto, consigo responder comandos básicos localmente."
+                "Ouvi você dizer: $command. Para responder com inteligência conversacional, configure a URL HTTPS e o token da API BRUCE no aplicativo."
         }
-        updateNotification("Pedido recebido. Respondendo.")
-        speakAndReturn(answer)
     }
 
     private fun speakAndReturn(message: String) {

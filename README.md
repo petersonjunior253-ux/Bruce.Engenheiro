@@ -1,38 +1,26 @@
-# BRUCE — Assistente pessoal independente
+# BRUCE — Assistente pessoal Android
 
-BRUCE é um assistente pessoal próprio, com aplicativo Android, serviço de ativação por voz e API/backend controlados pelo proprietário.
+Projeto nativo Android do BRUCE, com interface neural escura e foco em interação por voz.
 
-## Inteligência independente
+## O que já está no código
+- Interface Android nativa em Jetpack Compose, com núcleo neural animado.
+- Reconhecimento offline da palavra de ativação **BRUCE** usando Vosk em português.
+- Serviço de microfone em primeiro plano, com notificação persistente e ação para desativar.
+- Captura de uma frase falada após a palavra de ativação.
+- Respostas faladas locais para comandos básicos (hora, data e identidade).
+- Permissões explícitas de microfone, notificações, serviço de microfone e internet.
+- Workflow GitHub Actions para compilar e publicar o APK de teste como artefato.
 
-BRUCE **não utiliza a API da OpenAI nem a API do ChatGPT por padrão**. A API do BRUCE é o backend deste projeto. Ela se conecta a um motor de IA configurado pelo proprietário.
+## Gerar APK
+Abra a aba **Actions**, escolha **Build BRUCE APK**, abra a execução concluída e baixe o artefato **BRUCE-Android-APK**.
 
-O primeiro motor recomendado é **Ollama**, executando um modelo aberto no computador/servidor que hospeda a API. A API também pode apontar para outros servidores de inferência compatíveis com o formato de chat. O protocolo compatível é apenas o formato de comunicação; não significa que o serviço seja da OpenAI.
+## Limites conhecidos desta versão
+Esta ainda é uma versão de engenharia. A detecção da palavra e o fluxo de captura de fala estão no código, mas precisam ser testados no aparelho real (incluindo Samsung/Android 14). Não declare o BRUCE como assistente completo até concluir esses testes.
 
-## Componentes
+A conversa com um modelo de IA na nuvem, memória pessoal sincronizada, chamadas a ferramentas, automações, notificações inteligentes e diálogo contínuo ainda não estão conectados. A assinatura do ChatGPT não fornece automaticamente acesso à API para um aplicativo externo; uma integração de IA exige um backend seguro com credencial de API, sem embutir segredos no APK nem no repositório.
 
-- `app/`: aplicativo Android nativo com detecção local da palavra BRUCE.
-- `services/api/`: API própria, autenticação do dispositivo, histórico e memória SQLite.
-- `src/`: interface web/PWA.
-- `clients/`: clientes e protótipos adicionais.
-- `.github/workflows/`: compilação automatizada do APK.
+## Android 14 e execução em segundo plano
+O microfone é mantido por um serviço em primeiro plano, visível por uma notificação. O serviço deve ser iniciado quando o aplicativo estiver visível e as permissões forem concedidas. As regras do Android 14 restringem iniciar serviços de microfone a partir do segundo plano; por isso, não se promete inicialização automática após reinicialização do telefone. O usuário pode parar a escuta pela ação na notificação.
 
-## Como a inteligência funciona
-
-1. O aplicativo reconhece a palavra BRUCE localmente.
-2. A fala do usuário é transcrita.
-3. O app envia o texto para a API privada BRUCE por HTTPS.
-4. A API carrega histórico e memórias salvas.
-5. A API consulta o modelo configurado no servidor (Ollama por padrão).
-6. A resposta volta ao app e é falada em português.
-
-A capacidade de raciocínio depende do modelo selecionado e do hardware disponível. Uma API própria não cria, sozinha, um modelo neural: ela controla autenticação, memória, contexto, ferramentas e conexão com o motor de IA.
-
-## Configuração inicial do backend
-
-Veja [services/api/README.md](services/api/README.md) e copie `.env.example` para `.env`. Defina uma chave longa para `BRUCE_API_KEY`, escolha um modelo instalado no Ollama e mantenha qualquer credencial exclusivamente no servidor.
-
-**Nunca coloque chaves de provedor, tokens ou senhas no APK, no frontend ou no Git.**
-
-## Estado de desenvolvimento
-
-O projeto possui uma base Android com wake-word local e uma API com histórico e memória persistentes. A integração ponta a ponta com um modelo próprio ainda depende de hospedar a API, disponibilizar o motor de IA e configurar o app com URL HTTPS e token de dispositivo. O APK precisa ser validado no aparelho Samsung real.
+## Segurança
+Não comitar chaves de API, tokens, senhas, dados pessoais ou gravações. Nenhuma conversa de voz é enviada a um servidor nesta versão; reconhecimento de fala e respostas básicas são locais.
