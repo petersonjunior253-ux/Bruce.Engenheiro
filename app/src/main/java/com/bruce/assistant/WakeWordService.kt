@@ -16,6 +16,9 @@ import android.media.MediaPlayer
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.Environment
+import android.net.Uri
+import java.io.File
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
@@ -161,18 +164,24 @@ class WakeWordService : Service(), RecognitionListener {
                 }
                 "open_device_settings" -> {
                     val section = args.optString("section", "settings")
-                    val action = when (section) {
-                        "wifi" -> Settings.ACTION_WIFI_SETTINGS
-                        "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
-                        "sound" -> Settings.ACTION_SOUND_SETTINGS
-                        "display" -> Settings.ACTION_DISPLAY_SETTINGS
-                        "apps" -> Settings.ACTION_APPLICATION_SETTINGS
-                        "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
-                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                        "notification_access" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
-                        else -> Settings.ACTION_SETTINGS
+                    if (section == "files") {
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
+                        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } else {
+                        val action = when (section) {
+                            "wifi" -> Settings.ACTION_WIFI_SETTINGS
+                            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+                            "sound" -> Settings.ACTION_SOUND_SETTINGS
+                            "display" -> Settings.ACTION_DISPLAY_SETTINGS
+                            "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+                            "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+                            "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                            "notification_access" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
+                            else -> Settings.ACTION_SETTINGS
+                        }
+                        startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     }
-                    startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); result.put("settings_opened", section)
+                    result.put("settings_opened", section)
                 }
                 "list_notifications" -> {
                     val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty().contains(packageName)
@@ -183,6 +192,61 @@ class WakeWordService : Service(), RecognitionListener {
                     val raw = getSharedPreferences("bruce_notification_cache", MODE_PRIVATE).getString("active_notifications", "[]") ?: "[]"
                     val notifications = JSONArray(raw)
                     result.put("notifications", notifications).put("count", notifications.length())
+                }
+                "get_screen_text" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    result.put("text", accessibility.readScreenText())
+                }
+                "tap_text" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    val target = args.optString("text")
+                    if (!accessibility.tapText(target)) throw IllegalStateException("Não encontrei um controle clicável com o texto: $target")
+                    result.put("tapped", target)
+                }
+                "type_text" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    if (!accessibility.typeText(args.optString("text"))) throw IllegalStateException("Nenhum campo de texto está focado.")
+                    result.put("typed", true)
+                }
+                "scroll_screen" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    if (!accessibility.scroll(args.optString("direction", "down"))) throw IllegalStateException("Não encontrei uma área rolável.")
+                    result.put("scrolled", args.optString("direction"))
+                }
+                "press_back" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    result.put("back", accessibility.back())
+                }
+                "press_home" -> {
+                    val accessibility = BruceAccessibilityService.instance ?: throw IllegalStateException("Ative o serviço de acessibilidade BRUCE nas configurações.")
+                    result.put("home", accessibility.home())
+                }
+                "list_files" -> {
+                    requireStorageAccess()
+                    val folder = safeStorageFile(args.optString("path", ""))
+                    if (!folder.exists() || !folder.isDirectory) throw IllegalArgumentException("Pasta não encontrada.")
+                    val entries = JSONArray()
+                    folder.listFiles()?.sortedBy { it.name }?.take(200)?.forEach { file ->
+                        entries.put(JSONObject().put("name", file.name).put("path", file.relativeTo(Environment.getExternalStorageDirectory()).path)
+                            .put("directory", file.isDirectory).put("size", if (file.isFile) file.length() else 0L))
+                    }
+                    result.put("path", args.optString("path", "")).put("entries", entries).put("count", entries.length())
+                }
+                "read_file" -> {
+                    requireStorageAccess()
+                    val file = safeStorageFile(args.optString("path"))
+                    if (!file.isFile) throw IllegalArgumentException("Arquivo não encontrado.")
+                    if (file.length() > 1024 * 1024) throw IllegalArgumentException("O arquivo excede o limite de leitura de 1 MB.")
+                    result.put("path", args.optString("path")).put("content", file.readText(Charsets.UTF_8))
+                }
+                "create_text_file" -> {
+                    requireStorageAccess()
+                    val file = safeStorageFile(args.optString("path"))
+                    if (file.exists()) throw IllegalArgumentException("O arquivo já existe. O BRUCE não sobrescreve arquivos.")
+                    file.parentFile?.mkdirs()
+                    if (!file.createNewFile()) throw IllegalStateException("Não foi possível criar o arquivo.")
+                    file.writeText(args.optString("content"), Charsets.UTF_8)
+                    result.put("created", true).put("path", args.optString("path"))
                 }
                 "get_device_info" -> result.put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
                     .put("android_version", Build.VERSION.RELEASE).put("sdk", Build.VERSION.SDK_INT).put("device_id", deviceId)
@@ -199,6 +263,24 @@ class WakeWordService : Service(), RecognitionListener {
             val body = JSONObject().put("status", state).put("result", result).toString().toRequestBody("application/json".toMediaType())
             http.newCall(Request.Builder().url("$base/v1/device/commands/$id/result").header("Authorization", "Bearer $token").post(body).build()).execute().close()
         } catch (_: Exception) { }
+    }
+
+    private fun requireStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            throw IllegalStateException("Conceda ao BRUCE a permissão de acesso a arquivos nas configurações que foram abertas.")
+        }
+    }
+
+    private fun safeStorageFile(relativePath: String): File {
+        val root = Environment.getExternalStorageDirectory().canonicalFile
+        val target = File(root, relativePath).canonicalFile
+        if (target.path != root.path && !target.path.startsWith(root.path + File.separator)) {
+            throw SecurityException("Caminho fora do armazenamento compartilhado.")
+        }
+        return target
     }
 
     private fun parseIsoMillis(value: String): Long {
