@@ -11,6 +11,8 @@ import android.provider.Settings
 import android.provider.AlarmClock
 import android.content.pm.PackageManager
 import android.os.Handler
+import android.os.Build
+import android.media.MediaPlayer
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
@@ -37,6 +39,7 @@ class WakeWordService : Service(), RecognitionListener {
     private var speech: SpeechService? = null
     private var model: Model? = null
     private var tts: TextToSpeech? = null
+    private var neuralPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var awaitingCommand = false
     private var commandHandled = false
@@ -289,7 +292,7 @@ class WakeWordService : Service(), RecognitionListener {
                         ?: throw IllegalStateException("A API retornou uma resposta vazia.")
                     val id = result.optString("conversation_id")
                     if (id.isNotBlank()) prefs.edit().putString(BruceSecurePrefs.CONVERSATION_ID, id).apply()
-                    mainHandler.post { speakAndReturn(answer) }
+                    mainHandler.post { speakNeuralAndReturn(baseUrl, token, answer) }
                 }
             } catch (error: Exception) {
                 mainHandler.post {
@@ -311,6 +314,48 @@ class WakeWordService : Service(), RecognitionListener {
             else ->
                 "Ouvi você dizer: $command. Para responder com inteligência conversacional, configure a URL HTTPS e o token da API BRUCE no aplicativo."
         }
+    }
+
+
+    private fun speakNeuralAndReturn(base: String, token: String, text: String) {
+        Thread {
+            try {
+                val payload = JSONObject().put("text", text).put("voice", "pt-BR-AntonioNeural")
+                    .toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder().url("$base/v1/voice")
+                    .header("Authorization", "Bearer $token").post(payload).build()
+                val audio = http.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Voz neural indisponível")
+                    response.body?.bytes() ?: throw IllegalStateException("Áudio vazio")
+                }
+                val file = java.io.File(cacheDir, "bruce-neural-voice.mp3")
+                file.writeBytes(audio)
+                mainHandler.post {
+                    try {
+                        stopSpeech()
+                        neuralPlayer?.release()
+                        neuralPlayer = MediaPlayer().apply {
+                            setDataSource(file.absolutePath)
+                            setOnCompletionListener { player ->
+                                player.release()
+                                neuralPlayer = null
+                                startWakeRecognition()
+                            }
+                            setOnErrorListener { player, _, _ ->
+                                player.release()
+                                neuralPlayer = null
+                                speakAndReturn(text)
+                                true
+                            }
+                            prepareAsync()
+                            setOnPreparedListener { it.start(); updateNotification("BRUCE está falando com voz neural.") }
+                        }
+                    } catch (_: Exception) { speakAndReturn(text) }
+                }
+            } catch (_: Exception) {
+                mainHandler.post { speakAndReturn(text) }
+            }
+        }.start()
     }
 
     private fun speakAndReturn(message: String) {
@@ -374,6 +419,8 @@ class WakeWordService : Service(), RecognitionListener {
         stopSpeech()
         model?.close()
         tts?.shutdown()
+        neuralPlayer?.release()
+        neuralPlayer = null
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
