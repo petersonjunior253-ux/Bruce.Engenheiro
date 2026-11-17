@@ -22,7 +22,7 @@ class OfflineIntentTests(unittest.TestCase):
     def test_list_downloads(self):
         tool, args, _ = offline_intent("listar arquivos na pasta Download")
         self.assertEqual(tool, "list_files")
-        self.assertEqual(args["path"], "download")
+        self.assertEqual(args["path"], "Download")
 
     def test_local_time(self):
         tool, args, answer = offline_intent("que horas são?")
