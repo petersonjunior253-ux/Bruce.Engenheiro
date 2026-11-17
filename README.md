@@ -1,40 +1,26 @@
-# BRUCE — Personal AI Assistant
+# BRUCE — Assistente pessoal Android
 
-BRUCE is an independent personal-assistant experience for Windows and Android, using ChatGPT as its intended intelligence provider and a custom voice-first interface.
+Projeto nativo Android do BRUCE, com interface neural escura e foco em interação por voz.
 
-## Current milestone
+## O que já está no código
+- Interface Android nativa em Jetpack Compose, com núcleo neural animado.
+- Reconhecimento offline da palavra de ativação **BRUCE** usando Vosk em português.
+- Serviço de microfone em primeiro plano, com notificação persistente e ação para desativar.
+- Captura de uma frase falada após a palavra de ativação.
+- Respostas faladas locais para comandos básicos (hora, data e identidade).
+- Permissões explícitas de microfone, notificações, serviço de microfone e internet.
+- Workflow GitHub Actions para compilar e publicar o APK de teste como artefato.
 
-This repository starts with a responsive web prototype:
-- dark neural-core interface and assistant status;
-- text conversation interface;
-- browser speech recognition when supported and explicitly started by the user;
-- speech synthesis for spoken responses;
-- a visible microphone/listening state and stop control.
+## Gerar APK
+Abra a aba **Actions**, escolha **Build BRUCE APK**, abra a execução concluída e baixe o artefato **BRUCE-Android-APK**.
 
-## Important capability boundaries
+## Limites conhecidos desta versão
+Esta ainda é uma versão de engenharia. A detecção da palavra e o fluxo de captura de fala estão no código, mas precisam ser testados no aparelho real (incluindo Samsung/Android 14). Não declare o BRUCE como assistente completo até concluir esses testes.
 
-- The browser prototype does **not** listen while the browser is closed, the device is locked, or the operating system is using another app.
-- Browser speech recognition support varies by browser and device.
-- The prototype does not yet connect to ChatGPT. A ChatGPT API integration requires an API key and separate API billing; a ChatGPT subscription does not automatically provide API credentials.
-- Never put API keys in frontend code. A future backend must keep secrets server-side.
-- Native Android and Windows clients are required for a dependable BRUCE wake-word service. Android background microphone behavior is subject to OS permissions and foreground-service restrictions.
+A conversa com um modelo de IA na nuvem, memória pessoal sincronizada, chamadas a ferramentas, automações, notificações inteligentes e diálogo contínuo ainda não estão conectados. A assinatura do ChatGPT não fornece automaticamente acesso à API para um aplicativo externo; uma integração de IA exige um backend seguro com credencial de API, sem embutir segredos no APK nem no repositório.
 
-## Run locally
+## Android 14 e execução em segundo plano
+O microfone é mantido por um serviço em primeiro plano, visível por uma notificação. O serviço deve ser iniciado quando o aplicativo estiver visível e as permissões forem concedidas. As regras do Android 14 restringem iniciar serviços de microfone a partir do segundo plano; por isso, não se promete inicialização automática após reinicialização do telefone. O usuário pode parar a escuta pela ação na notificação.
 
-Requirements: Node.js 20+.
-
-```bash
-npm install
-npm run dev
-```
-
-## Planned architecture
-
-- `src/`: responsive assistant UI and browser voice prototype.
-- `apps/windows`: planned Windows companion with local wake-word detection.
-- `apps/android`: planned Android companion with an explicitly enabled foreground voice service.
-- `services/api`: planned secure backend for model calls, device pairing, preferences and action approvals.
-
-## Privacy and safety
-
-Wake-word detection should run locally. Audio should only be sent for transcription after activation and user consent. The assistant must request confirmation before sensitive, external, financial or irreversible actions.
+## Segurança
+Não comitar chaves de API, tokens, senhas, dados pessoais ou gravações. Nenhuma conversa de voz é enviada a um servidor nesta versão; reconhecimento de fala e respostas básicas são locais.
