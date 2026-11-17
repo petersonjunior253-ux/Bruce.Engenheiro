@@ -162,10 +162,15 @@ class WakeWordService : Service(), RecognitionListener {
                         "display" -> Settings.ACTION_DISPLAY_SETTINGS
                         "apps" -> Settings.ACTION_APPLICATION_SETTINGS
                         "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
-                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS\n                        "notification_access" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
                         else -> Settings.ACTION_SETTINGS
                     }
                     startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); result.put("settings_opened", section)
+                }
+                "list_notifications" -> {
+                    val raw = getSharedPreferences("bruce_notification_cache", MODE_PRIVATE).getString("active_notifications", "[]") ?: "[]"
+                    val notifications = JSONArray(raw)
+                    result.put("notifications", notifications).put("count", notifications.length())
                 }
                 "get_device_info" -> result.put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
                     .put("android_version", Build.VERSION.RELEASE).put("sdk", Build.VERSION.SDK_INT).put("device_id", deviceId)
