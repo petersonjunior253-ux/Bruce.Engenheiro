@@ -72,7 +72,7 @@ export default function App() {
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiToken },
         body: JSON.stringify({
           conversation_id: conversationId,
-          messages: next.filter((item) => item !== welcome).map(({ role, text: content }) => ({ role, content }))
+          messages: [{ role: "user", content: text }]
         })
       });
       const data = await response.json();
