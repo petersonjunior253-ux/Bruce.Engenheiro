@@ -8,7 +8,7 @@ const URL_KEY="bruce_api_url",TOKEN_KEY="bruce_api_token";
 const intro="Protocolo BRUCE WAYNE iniciado. Estou aqui. Como posso ajudar?";
 
 export default function App(){
- const [apiUrl,setApiUrl]=useState(localStorage.getItem(URL_KEY)||"");
+ const [apiUrl,setApiUrl]=useState(localStorage.getItem(URL_KEY)||"https://bruce-personal-api-petersonjunior253-8756s-projects.vercel.app");
  const [token,setToken]=useState(sessionStorage.getItem(TOKEN_KEY)||"");
  const [draftUrl,setDraftUrl]=useState(apiUrl),[draftToken,setDraftToken]=useState(token);
  const [settings,setSettings]=useState(false),[historyOpen,setHistoryOpen]=useState(false);
@@ -19,7 +19,7 @@ export default function App(){
  const [error,setError]=useState("");
  const recognition=useRef<Recognition|null>(null),wakeRef=useRef(false),scrollRef=useRef<HTMLDivElement>(null);
  const request=useCallback(async(path:string,init:RequestInit={})=>{if(!apiUrl||!token)throw new Error("Configure a API privada nas definições.");const r=await fetch(apiUrl.replace(/\/$/,"")+path,{...init,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token,...(init.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"Falha na API "+r.status);return d;},[apiUrl,token]);
- useEffect(()=>{if(!apiUrl||!token){setConnected(false);return;}fetch(apiUrl.replace(/\/$/,"")+"/health").then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{setConnected(true);setModel(d.model_name||"MODELO CONECTADO");setStatus("NÚCLEO CONECTADO")}).catch(()=>{setConnected(false);setStatus("API INDISPONÍVEL")});},[apiUrl,token]);
+ useEffect(()=>{if(!apiUrl||!token){setConnected(false);return;}fetch(apiUrl.replace(/\/$/,"")+"/health").then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{setConnected(true);setModel(d.model_configured?(d.model_name||"MODELO CONECTADO"):"MODELO NÃO CONFIGURADO");setStatus(d.model_configured?"NÚCLEO CONECTADO":"API ONLINE · AGUARDANDO MODELO")}).catch(()=>{setConnected(false);setStatus("API INDISPONÍVEL")});},[apiUrl,token]);
  useEffect(()=>{scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:"smooth"});},[messages,busy]);
  useEffect(()=>()=>{recognition.current?.stop();window.speechSynthesis?.cancel()},[]);
  const speak=useCallback((text:string)=>{if(!voice)return;const fallback=()=>{if(!("speechSynthesis"in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="pt-BR";u.rate=.96;u.pitch=.96;u.onstart=()=>setSpeaking(true);u.onend=()=>setSpeaking(false);u.onerror=()=>setSpeaking(false);window.speechSynthesis.speak(u)};if(apiUrl&&token){fetch(apiUrl.replace(/\/$/,"")+"/v1/voice",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({text,voice:"pt-BR-AntonioNeural"})}).then(r=>{if(!r.ok)throw Error();return r.blob()}).then(blob=>{const src=URL.createObjectURL(blob),audio=new Audio(src);audio.onplay=()=>setSpeaking(true);audio.onended=()=>{setSpeaking(false);URL.revokeObjectURL(src)};audio.onerror=()=>{setSpeaking(false);URL.revokeObjectURL(src);fallback()};void audio.play().catch(fallback)}).catch(fallback)}else fallback()},[voice,apiUrl,token]);
