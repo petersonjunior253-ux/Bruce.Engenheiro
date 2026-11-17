@@ -111,6 +111,7 @@ def health():
         "status": "ok",
         "service": "BRUCE Personal Intelligence API",
         "model_configured": bool(settings.model_name),
+        "model_name": settings.model_name,
         "model_provider": "OpenAI-compatible endpoint",
         "voice": "client-or-device",
         "database": "sqlite",
@@ -141,7 +142,10 @@ async def chat(payload: ChatRequest):
                 "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
                 (conversation_id, item.role, item.content, now),
             )
-        conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, conversation_id))
+        conn.execute(
+            "UPDATE conversations SET updated_at=?, title=CASE WHEN title=? THEN ? ELSE title END WHERE id=?",
+            (now, "Nova conversa", payload.messages[0].content.strip()[:72] or "Nova conversa", conversation_id),
+        )
         conn.commit()
 
     memory = get_memory_context()
