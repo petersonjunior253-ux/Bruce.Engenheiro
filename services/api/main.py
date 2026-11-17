@@ -129,12 +129,17 @@ async def chat(payload: ChatRequest):
             "INSERT OR IGNORE INTO conversations(id, created_at, updated_at) VALUES(?,?,?)",
             (conversation_id, now, now),
         )
-        conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, conversation_id))
-        for item in payload.messages[-settings.max_context_messages:]:
+        history = conn.execute(
+            "SELECT role, content FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+            (conversation_id, settings.max_context_messages),
+        ).fetchall()
+        history = list(reversed(history))
+        for item in payload.messages:
             conn.execute(
                 "INSERT INTO messages(conversation_id, role, content, created_at) VALUES(?,?,?,?)",
                 (conversation_id, item.role, item.content, now),
             )
+        conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, conversation_id))
         conn.commit()
 
     memory = get_memory_context()
@@ -142,10 +147,9 @@ async def chat(payload: ChatRequest):
     if memory:
         system += "\n\nMemórias fornecidas pelo usuário:\n" + memory
     messages = [{"role": "system", "content": system}]
-    messages.extend(
-        {"role": item.role, "content": item.content}
-        for item in payload.messages[-settings.max_context_messages:]
-    )
+    messages.extend({"role": row["role"], "content": row["content"]} for row in history)
+    messages.extend({"role": item.role, "content": item.content} for item in payload.messages)
+    messages = messages[-(settings.max_context_messages + 1):]
     url = settings.model_base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {settings.model_api_key}", "Content-Type": "application/json"}
     body = {
