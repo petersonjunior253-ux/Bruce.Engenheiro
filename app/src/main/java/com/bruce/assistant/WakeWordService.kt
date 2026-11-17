@@ -12,7 +12,6 @@ import android.provider.AlarmClock
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Build
-import android.os.Build
 import android.media.MediaPlayer
 import android.os.IBinder
 import android.os.Looper
@@ -162,7 +161,8 @@ class WakeWordService : Service(), RecognitionListener {
                         "display" -> Settings.ACTION_DISPLAY_SETTINGS
                         "apps" -> Settings.ACTION_APPLICATION_SETTINGS
                         "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
-                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS\n                        "notification_access" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
+                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                        "notification_access" -> Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
                         else -> Settings.ACTION_SETTINGS
                     }
                     startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); result.put("settings_opened", section)
