@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BRUCE</string>
+    <string name="bruce_accessibility_description">Permite que o BRUCE leia o conteúdo visível da tela e execute ações de interface solicitadas pelo usuário, como tocar em controles, digitar e rolar.</string>
+</resources>
