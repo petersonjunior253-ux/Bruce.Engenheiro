@@ -115,8 +115,25 @@ async def neural_voice(p:VoiceRequest):
   raise HTTPException(502,"Não foi possível gerar a voz neural agora.") from e
 
 @app.get("/health")
-def health():
- return {"status":"ok","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":blob_enabled,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+async def health():
+ storage="disabled"
+ if blob_enabled:
+  try:
+   await blob.get_blob(blob_path,access="private")
+   storage="ready"
+  except blob.BlobNotFoundError:
+   try:
+    await blob.put_blob(blob_path,db.read_bytes(),access="private",allow_overwrite=False,content_type="application/vnd.sqlite3")
+    storage="initialized"
+   except Exception:
+    try:
+     await blob.get_blob(blob_path,access="private")
+     storage="ready"
+    except Exception:
+     storage="error"
+  except Exception:
+   storage="error"
+ return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 @app.post("/v1/chat",dependencies=[Depends(auth)])
 async def chat(p:ChatRequest):
  if not settings.model_base_url: raise HTTPException(503,"API BRUCE ativa, mas falta configurar BRUCE_MODEL_BASE_URL com o endpoint público do seu modelo. Ollama em 127.0.0.1 não é acessível pela nuvem.")
@@ -132,6 +149,9 @@ async def chat(p:ChatRequest):
  context=settings.system_prompt
  if mem:context+="\n\nMemórias do usuário:\n"+"\n".join(f"- [{x['category']}] {x['content']}" for x in mem)
  if devices:context+="\n\nUm dispositivo Android está conectado e pode receber comandos por ferramentas. Use-as somente quando o usuário pedir uma ação concreta. O aplicativo Android exige confirmação em ações que alteram dados."
+ with connect() as c:recent=c.execute("SELECT tool,status,result FROM device_commands ORDER BY created_at DESC LIMIT 5").fetchall()
+ if recent:
+  context+="\n\nResultados recentes de ações no dispositivo (use apenas como histórico, não repita sem pedido):\n"+"\n".join(f"- {x['tool']}: {x['status']} — {x['result'] or 'sem retorno'}" for x in recent)
  else:context+="\n\nNenhum dispositivo Android está conectado agora. Não diga que executou ações no aparelho."
  messages=[{"role":"system","content":context}]+[{"role":x["role"],"content":x["content"]} for x in reversed(old)]+[{"role":m.role,"content":m.content} for m in p.messages]
  body={"model":settings.model_name,"messages":messages,"max_tokens":settings.max_output_tokens,"tools":TOOLS,"tool_choice":"auto"}
@@ -180,6 +200,11 @@ def device_commands(device_id:str=Query(...)):
   for row in rows:c.execute("UPDATE device_commands SET status='sent' WHERE id=?",(row["id"],))
   c.commit()
  return [{"id":r["id"],"tool":r["tool"],"arguments":json.loads(r["args"]),"created_at":r["created_at"]} for r in rows]
+@app.get("/v1/device/commands/{command_id}",dependencies=[Depends(auth)])
+def command_status(command_id:str):
+ with connect() as c:row=c.execute("SELECT id,tool,status,created_at,result FROM device_commands WHERE id=?",(command_id,)).fetchone()
+ if not row:raise HTTPException(404,"Comando não encontrado.")
+ return {"id":row["id"],"tool":row["tool"],"status":row["status"],"created_at":row["created_at"],"result":json.loads(row["result"]) if row["result"] else None}
 @app.post("/v1/device/commands/{command_id}/result",dependencies=[Depends(auth)])
 def command_result(command_id:str,p:CommandResult):
  with connect() as c:
