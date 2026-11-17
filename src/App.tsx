@@ -12,7 +12,8 @@ export default function App(){
  const [token,setToken]=useState(sessionStorage.getItem(TOKEN_KEY)||"");
  const [draftUrl,setDraftUrl]=useState(apiUrl),[draftToken,setDraftToken]=useState(token);
  const [settings,setSettings]=useState(false),[historyOpen,setHistoryOpen]=useState(false);
- const [messages,setMessages]=useState<Msg[]>([]),[input,setInput]=useState("");\n const [conversationId,setConversationId]=useState<string|null>(null);
+ const [messages,setMessages]=useState<Msg[]>([]),[input,setInput]=useState("");
+ const [conversationId,setConversationId]=useState<string|null>(null);
  const [busy,setBusy]=useState(false),[listening,setListening]=useState(false),[wake,setWake]=useState(false),[speaking,setSpeaking]=useState(false),[voice,setVoice]=useState(true);
  const [connected,setConnected]=useState(false),[model,setModel]=useState("NÚCLEO LOCAL"),[status,setStatus]=useState("AGUARDANDO");
  const [error,setError]=useState("");
