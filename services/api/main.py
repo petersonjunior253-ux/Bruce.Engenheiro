@@ -39,7 +39,7 @@ db_path.parent.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="BRUCE Personal Intelligence API", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("BRUCE_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","),
+    allow_origins=os.getenv("BRUCE_ALLOWED_ORIGINS", "https://bruce-preview-six.vercel.app,https://bruce-preview-petersonjunior253-8756s-projects.vercel.app,http://localhost:5173,http://127.0.0.1:5173").split(","),
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
