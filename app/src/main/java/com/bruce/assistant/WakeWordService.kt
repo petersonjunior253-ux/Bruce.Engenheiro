@@ -6,6 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.provider.CalendarContract
+import android.provider.Settings
+import android.provider.AlarmClock
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -38,6 +42,8 @@ class WakeWordService : Service(), RecognitionListener {
     private var commandHandled = false
     private var lastWakeAt = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val deviceId by lazy { Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "bruce-android" }
+    private val bridgeLoop = object : Runnable { override fun run() { bridgeTick(); mainHandler.postDelayed(this, 7000) } }
     private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(180, TimeUnit.SECONDS).callTimeout(190, TimeUnit.SECONDS).build()
 
@@ -71,10 +77,117 @@ class WakeWordService : Service(), RecognitionListener {
                 })
             }
         }
+        mainHandler.postDelayed(bridgeLoop, 2500)
         StorageService.unpack(this, "model-pt", "model-pt",
             { loaded -> model = loaded; startWakeRecognition() },
             { error -> updateNotification("Falha ao preparar voz: ${error.message}") }
         )
+    }
+
+
+    private fun bridgeTick() {
+        val prefs = BruceSecurePrefs.get(this)
+        val base = prefs.getString(BruceSecurePrefs.API_URL, "").orEmpty().trim().trimEnd('/')
+        val token = prefs.getString(BruceSecurePrefs.API_TOKEN, "").orEmpty().trim()
+        if (base.isBlank() || token.isBlank()) return
+        Thread {
+            try {
+                val registration = JSONObject().put("device_id", deviceId).put("name", Build.MANUFACTURER + " " + Build.MODEL).put("platform", "android").put("metadata", JSONObject().put("sdk", Build.VERSION.SDK_INT))
+                val registerBody = registration.toString().toRequestBody("application/json".toMediaType())
+                http.newCall(Request.Builder().url("$base/v1/device/register").header("Authorization", "Bearer $token").post(registerBody).build()).execute().close()
+                val poll = Request.Builder().url("$base/v1/device/commands?device_id=$deviceId").header("Authorization", "Bearer $token").get().build()
+                http.newCall(poll).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val rows = JSONArray(response.body?.string().orEmpty())
+                        for (i in 0 until rows.length()) executeDeviceCommand(base, token, rows.getJSONObject(i))
+                    }
+                }
+            } catch (_: Exception) { }
+        }.start()
+    }
+
+    private fun executeDeviceCommand(base: String, token: String, command: JSONObject) {
+        val id = command.optString("id")
+        val tool = command.optString("tool")
+        val args = command.optJSONObject("arguments") ?: JSONObject()
+        val result = JSONObject()
+        var state = "completed"
+        try {
+            when (tool) {
+                "open_app" -> {
+                    val pkg = args.optString("package_name")
+                    val launch = packageManager.getLaunchIntentForPackage(pkg) ?: throw IllegalArgumentException("Aplicativo não encontrado: $pkg")
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(launch)
+                    result.put("opened", true).put("package_name", pkg)
+                }
+                "create_calendar_event" -> {
+                    val title = args.optString("title")
+                    val start = parseIsoMillis(args.optString("start_iso"))
+                    val intent = Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)
+                        .putExtra(CalendarContract.Events.TITLE, title).putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, start)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (args.has("end_iso")) intent.putExtra(CalendarContract.EXTRA_EVENT_END_TIME, parseIsoMillis(args.optString("end_iso")))
+                    if (args.has("description")) intent.putExtra(CalendarContract.Events.DESCRIPTION, args.optString("description"))
+                    startActivity(intent); result.put("opened_calendar_confirmation", true).put("title", title)
+                }
+                "open_file_picker" -> {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType(args.optString("mime_type", "*/*"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    startActivity(intent); result.put("file_picker_opened", true)
+                }
+                "create_notification" -> {
+                    val title = args.optString("title", "BRUCE")
+                    val notification = NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title).setContentText(args.optString("message")).setAutoCancel(true).build()
+                    getSystemService(NotificationManager::class.java).notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+                    result.put("notification_posted", true)
+                }
+                "set_alarm" -> {
+                    val intent = Intent(AlarmClock.ACTION_SET_ALARM).putExtra(AlarmClock.EXTRA_HOUR, args.optInt("hour"))
+                        .putExtra(AlarmClock.EXTRA_MINUTES, args.optInt("minute")).putExtra(AlarmClock.EXTRA_MESSAGE, args.optString("message", "BRUCE"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent); result.put("alarm_screen_opened", true)
+                }
+                "open_device_settings" -> {
+                    val section = args.optString("section", "settings")
+                    val action = when (section) {
+                        "wifi" -> Settings.ACTION_WIFI_SETTINGS
+                        "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+                        "sound" -> Settings.ACTION_SOUND_SETTINGS
+                        "display" -> Settings.ACTION_DISPLAY_SETTINGS
+                        "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+                        "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+                        "notifications" -> Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                        else -> Settings.ACTION_SETTINGS
+                    }
+                    startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); result.put("settings_opened", section)
+                }
+                "get_device_info" -> result.put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
+                    .put("android_version", Build.VERSION.RELEASE).put("sdk", Build.VERSION.SDK_INT).put("device_id", deviceId)
+                "list_installed_apps" -> {
+                    val apps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+                    val names = JSONArray()
+                    for (appInfo in apps.take(120)) names.put(JSONObject().put("name", packageManager.getApplicationLabel(appInfo).toString()).put("package_name", appInfo.packageName))
+                    result.put("apps", names)
+                }
+                else -> throw IllegalArgumentException("Ferramenta não implementada no dispositivo: $tool")
+            }
+        } catch (e: Exception) { state = "failed"; result.put("error", e.message ?: "Falha ao executar ação") }
+        try {
+            val body = JSONObject().put("status", state).put("result", result).toString().toRequestBody("application/json".toMediaType())
+            http.newCall(Request.Builder().url("$base/v1/device/commands/$id/result").header("Authorization", "Bearer $token").post(body).build()).execute().close()
+        } catch (_: Exception) { }
+    }
+
+    private fun parseIsoMillis(value: String): Long {
+        val formats = listOf("yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd'T'HH:mmXXX", "yyyy-MM-dd'T'HH:mm:ss")
+        for (format in formats) try {
+            val parser = java.text.SimpleDateFormat(format, Locale.US)
+            val parsed = parser.parse(value)
+            if (parsed != null) return parsed.time
+        } catch (_: Exception) { }
+        throw IllegalArgumentException("Data/hora inválida: $value")
     }
 
     private fun startWakeRecognition() {
@@ -257,6 +370,7 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(bridgeLoop)
         stopSpeech()
         model?.close()
         tts?.shutdown()
