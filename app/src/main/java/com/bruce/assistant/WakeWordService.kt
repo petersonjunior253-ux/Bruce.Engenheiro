@@ -130,6 +130,7 @@ class WakeWordService : Service(), RecognitionListener {
 
     private fun handleCommand(command: String) {
         if (commandHandled) return
+        if (System.currentTimeMillis() - lastWakeAt < 1800 && command.trim().equals("bruce", ignoreCase = true)) return
         commandHandled = true
         val normalized = command.lowercase(Locale("pt", "BR"))
         val answer = when {
