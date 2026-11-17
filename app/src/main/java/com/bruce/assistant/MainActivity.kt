@@ -5,36 +5,44 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+private data class BruceMessage(val role: String, val content: String)
 
 class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        if (result[Manifest.permission.RECORD_AUDIO] == true) startBruceService()
-    }
+    ) { result -> if (result[Manifest.permission.RECORD_AUDIO] == true) startBruceService() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,124 +50,179 @@ class MainActivity : ComponentActivity() {
         setContent {
             var apiUrl by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.API_URL, "") ?: "") }
             var apiToken by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.API_TOKEN, "") ?: "") }
-            var status by remember { mutableStateOf("PRONTO PARA CONFIGURAR") }
-            MaterialTheme {
-                BruceHome(
-                    apiUrl = apiUrl,
-                    apiToken = apiToken,
-                    status = status,
-                    onApiUrlChange = { apiUrl = it },
-                    onApiTokenChange = { apiToken = it },
-                    onSave = {
-                        prefs.edit()
-                            .putString(BruceSecurePrefs.API_URL, apiUrl.trim().trimEnd('/'))
-                            .putString(BruceSecurePrefs.API_TOKEN, apiToken.trim())
-                            .apply()
-                        status = "CONEXÃO SALVA COM SEGURANÇA"
-                    },
-                    onActivate = {
-                        val needed = mutableListOf(Manifest.permission.RECORD_AUDIO)
-                        if (Build.VERSION.SDK_INT >= 33) needed += Manifest.permission.POST_NOTIFICATIONS
-                        val missing = needed.filter {
-                            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            var draftUrl by remember { mutableStateOf(apiUrl) }
+            var draftToken by remember { mutableStateOf(apiToken) }
+            var showSettings by remember { mutableStateOf(apiUrl.isBlank() || apiToken.isBlank()) }
+            var input by remember { mutableStateOf("") }
+            var status by remember { mutableStateOf("SUA INTELIGÊNCIA PRIVADA") }
+            var busy by remember { mutableStateOf(false) }
+            var conversationId by remember { mutableStateOf(prefs.getString(BruceSecurePrefs.CONVERSATION_ID, null)) }
+            val messages = remember { mutableStateListOf(BruceMessage("assistant", "Estou aqui. Sou BRUCE, seu assistente pessoal. Configure sua API privada para ativar a inteligência conversacional.")) }
+            val listState = rememberLazyListState()
+            val client = remember { OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(180, TimeUnit.SECONDS).build() }
+            val handler = remember { Handler(Looper.getMainLooper()) }
+
+            LaunchedEffect(messages.size) {
+                if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+            }
+
+            MaterialTheme(colorScheme = darkColorScheme(
+                primary = Color(0xFFB7E1FF), onPrimary = Color(0xFF07131E),
+                background = Color(0xFF080A0D), surface = Color(0xFF11151B),
+                onSurface = Color(0xFFE8EDF3), secondary = Color(0xFF85BCE8)
+            )) {
+                Surface(Modifier.fillMaxSize(), color = Color(0xFF080A0D)) {
+                    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF101720), Color(0xFF080A0D))))) {
+                        Row(
+                            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(34.dp).background(Color(0xFF172738), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                                Text("◉", color = Color(0xFFB7E1FF), fontSize = 20.sp)
+                            }
+                            Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                                Text("BRUCE", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                                Text(status, color = Color(0xFF8296AA), fontSize = 8.sp, letterSpacing = 1.sp)
+                            }
+                            TextButton(onClick = { showSettings = !showSettings }) { Text("CONFIG", color = Color(0xFF9BB9D3), fontSize = 10.sp) }
+                            TextButton(onClick = {
+                                conversationId = null
+                                prefs.edit().remove(BruceSecurePrefs.CONVERSATION_ID).apply()
+                                messages.clear()
+                                messages.add(BruceMessage("assistant", "Nova conversa. O que vamos resolver?"))
+                            }) { Text("＋", color = Color(0xFFB7E1FF), fontSize = 22.sp) }
                         }
-                        if (missing.isEmpty()) {
-                            startBruceService()
-                            status = "BRUCE ESTÁ AGUARDANDO A PALAVRA-CHAVE"
-                        } else permissionLauncher.launch(missing.toTypedArray())
+                        if (showSettings) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 8.dp)
+                                    .background(Color(0xFF111923), RoundedCornerShape(14.dp)).padding(14.dp)
+                            ) {
+                                Text("CONECTAR INTELIGÊNCIA PRÓPRIA", color = Color(0xFFE4F1FC), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+                                Text("A chave do modelo fica no servidor. Aqui use apenas a URL da API e o token privado do BRUCE.", color = Color(0xFF8192A4), fontSize = 10.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
+                                OutlinedTextField(value = draftUrl, onValueChange = { draftUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("URL HTTPS da API") })
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(value = draftToken, onValueChange = { draftToken = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Token privado do dispositivo") }, visualTransformation = PasswordVisualTransformation())
+                                Button(
+                                    onClick = {
+                                        apiUrl = draftUrl.trim().trimEnd('/')
+                                        apiToken = draftToken.trim()
+                                        prefs.edit().putString(BruceSecurePrefs.API_URL, apiUrl).putString(BruceSecurePrefs.API_TOKEN, apiToken).apply()
+                                        showSettings = false
+                                        status = "CONEXÃO SALVA"
+                                    },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 9.dp)
+                                ) { Text("SALVAR CONEXÃO") }
+                            }
+                        }
+                        Column(Modifier.weight(1f).fillMaxWidth()) {
+                            if (messages.size == 1 && messages[0].role == "assistant") {
+                                Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Box(
+                                        Modifier.size(145.dp).background(Brush.radialGradient(listOf(Color(0xFF315D80), Color(0xFF12263B), Color(0xFF080A0D))), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Box(Modifier.size(90.dp).background(Brush.radialGradient(listOf(Color(0xFFE5F6FF), Color(0xFF67B9F2), Color(0xFF174C80))), CircleShape))
+                                    }
+                                    Text("O QUE VAMOS RESOLVER?", color = Color(0xFFEAF2F8), fontSize = 20.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 24.dp))
+                                    Text("Converse por texto ou chame pelo nome BRUCE.", color = Color(0xFF8291A1), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Button(onClick = { activateVoice() }, modifier = Modifier.padding(top = 17.dp)) { Text("ATIVAR VOZ · BRUCE") }
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+                                    contentPadding = PaddingValues(vertical = 20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                                ) {
+                                    items(messages) { message ->
+                                        Column(Modifier.fillMaxWidth()) {
+                                            Text(if (message.role == "assistant") "BRUCE" else "VOCÊ", color = Color(0xFF8FAFCB), fontSize = 9.sp, letterSpacing = 1.5.sp)
+                                            Text(message.content, color = Color(0xFFD9E0E8), fontSize = 13.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp))
+                                        }
+                                    }
+                                    if (busy) item { Text("BRUCE ESTÁ PENSANDO…", color = Color(0xFF8FAFCB), fontSize = 10.sp) }
+                                }
+                            }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 9.dp)
+                                .background(Color(0xFF121821), RoundedCornerShape(15.dp)).padding(start = 14.dp, end = 7.dp, top = 5.dp, bottom = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            BasicTextField(
+                                value = input, onValueChange = { input = it },
+                                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
+                                decorationBox = { inner -> if (input.isEmpty()) Text("Mensagem para BRUCE…", color = Color(0xFF697888), fontSize = 13.sp); inner() }
+                            )
+                            TextButton(onClick = { activateVoice() }) { Text("🎙", fontSize = 18.sp) }
+                            Button(
+                                onClick = {
+                                    val question = input.trim()
+                                    if (question.isNotEmpty() && !busy) {
+                                        input = ""
+                                        messages.add(BruceMessage("user", question))
+                                        if (apiUrl.isBlank() || apiToken.isBlank()) {
+                                            messages.add(BruceMessage("assistant", "Configure a URL e o token privado da sua API nas configurações."))
+                                        } else {
+                                            busy = true; status = "PROCESSANDO"
+                                            Thread {
+                                                try {
+                                                    val body = JSONObject()
+                                                        .put("conversation_id", conversationId)
+                                                        .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", question)))
+                                                        .toString().toRequestBody("application/json".toMediaType())
+                                                    val request = Request.Builder().url("$apiUrl/v1/chat")
+                                                        .header("Authorization", "Bearer $apiToken").post(body).build()
+                                                    client.newCall(request).execute().use { response ->
+                                                        val raw = response.body?.string().orEmpty()
+                                                        if (!response.isSuccessful) throw IllegalStateException("API HTTP ${response.code}")
+                                                        val result = JSONObject(raw)
+                                                        val answer = result.optString("message")
+                                                        val id = result.optString("conversation_id")
+                                                        handler.post {
+                                                            if (id.isNotBlank()) {
+                                                                conversationId = id
+                                                                prefs.edit().putString(BruceSecurePrefs.CONVERSATION_ID, id).apply()
+                                                            }
+                                                            messages.add(BruceMessage("assistant", answer))
+                                                            busy = false; status = "NÚCLEO CONECTADO"
+                                                        }
+                                                    }
+                                                } catch (e: Exception) {
+                                                    handler.post {
+                                                        messages.add(BruceMessage("assistant", "Não consegui acessar a API: ${e.message}"))
+                                                        busy = false; status = "FALHA DE CONEXÃO"
+                                                    }
+                                                }
+                                            }.start()
+                                        }
+                                    }
+                                },
+                                enabled = input.isNotBlank() && !busy,
+                                shape = RoundedCornerShape(11.dp),
+                                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 9.dp)
+                            ) { Text("↑", fontSize = 19.sp) }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("BRUCE · IA INDEPENDENTE", color = Color(0xFF566575), fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("VOZ + MEMÓRIA", color = Color(0xFF566575), fontSize = 8.sp, letterSpacing = 1.sp)
+                        }
                     }
-                )
+                }
             }
         }
+    }
+
+    private fun activateVoice() {
+        val needed = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) needed.add(Manifest.permission.POST_NOTIFICATIONS)
+        val missing = needed.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) startBruceService() else permissionLauncher.launch(missing.toTypedArray())
     }
 
     private fun startBruceService() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            ContextCompat.startForegroundService(this, Intent(this, WakeWordService::class.java))
-        }
-    }
-}
-
-@Composable
-private fun BruceHome(
-    apiUrl: String,
-    apiToken: String,
-    status: String,
-    onApiUrlChange: (String) -> Unit,
-    onApiTokenChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onActivate: () -> Unit
-) {
-    val infinite = rememberInfiniteTransition(label = "core")
-    val pulse by infinite.animateFloat(.82f, 1.08f, infiniteRepeatable(tween(1900, easing = EaseInOutSine), RepeatMode.Reverse), label = "pulse")
-    val rotation by infinite.animateFloat(0f, 360f, infiniteRepeatable(tween(18000, easing = LinearEasing)), label = "rotation")
-    Surface(Modifier.fillMaxSize(), color = Color(0xFF07090D)) {
-        Column(
-            Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF111923), Color(0xFF050608))))
-                .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 30.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(12.dp))
-            Text("B R U C E", color = Color(0xFFF2F5FA), fontSize = 25.sp, fontWeight = FontWeight.Light, letterSpacing = 8.sp)
-            Spacer(Modifier.height(28.dp))
-            Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val c = center
-                    val radius = size.minDimension * .31f * pulse
-                    drawCircle(Brush.radialGradient(listOf(Color(0x553FBAFF), Color(0x223B8DFF), Color.Transparent), c, radius * 1.8f), radius * 1.8f)
-                    drawCircle(Color(0x663CAEFF), radius * 1.32f, style = Stroke(1.2.dp.toPx()))
-                    drawCircle(Color(0xAA75D4FF), radius, style = Stroke(2.dp.toPx()))
-                    drawCircle(Color(0xFFB8E9FF), radius * .72f)
-                    for (i in 0..11) {
-                        val a = Math.toRadians((i * 30.0 + rotation).toDouble())
-                        val p1 = androidx.compose.ui.geometry.Offset(c.x + kotlin.math.cos(a).toFloat() * radius * 1.08f, c.y + kotlin.math.sin(a).toFloat() * radius * 1.08f)
-                        val p2 = androidx.compose.ui.geometry.Offset(c.x + kotlin.math.cos(a).toFloat() * radius * 1.22f, c.y + kotlin.math.sin(a).toFloat() * radius * 1.22f)
-                        drawLine(Color(0xFF7CCEFF), p1, p2, 2.dp.toPx())
-                    }
-                }
-                Box(Modifier.size(92.dp).blur(22.dp).background(Color(0x664ABEFF), CircleShape))
-                Box(Modifier.size(56.dp).background(Brush.radialGradient(listOf(Color.White, Color(0xFF69C8FF), Color(0xFF1468B5))), CircleShape))
-            }
-            Spacer(Modifier.height(20.dp))
-            Text("SEU ASSISTENTE PESSOAL", color = Color(0xFFDDEAF5), fontSize = 12.sp, letterSpacing = 2.sp)
-            Text("Diga BRUCE para chamar", color = Color(0xFF8B9AAA), fontSize = 14.sp, modifier = Modifier.padding(top = 9.dp))
-            Button(onClick = onActivate, modifier = Modifier.padding(top = 20.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF173B59))) {
-                Text("ATIVAR BRUCE")
-            }
-            Text(status, color = Color(0xFF9EB9D8), fontSize = 10.sp, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 12.dp))
-            Spacer(Modifier.height(28.dp))
-            Column(Modifier.fillMaxWidth().background(Color(0xFF101722), MaterialTheme.shapes.large).padding(18.dp)) {
-                Text("INTELIGÊNCIA PRÓPRIA", color = Color(0xFFE6F2FC), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.2.sp)
-                Text("Conecte a API do BRUCE. A chave do modelo fica no servidor, nunca neste aplicativo.", color = Color(0xFF8797A8), fontSize = 11.sp, lineHeight = 17.sp, modifier = Modifier.padding(top = 7.dp, bottom = 14.dp))
-                OutlinedTextField(
-                    value = apiUrl, onValueChange = onApiUrlChange,
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("URL HTTPS da API BRUCE") },
-                    placeholder = { Text("https://api.seudominio.com") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF78BDEB), unfocusedBorderColor = Color(0xFF465363),
-                        focusedLabelColor = Color(0xFF9CCEF0), unfocusedLabelColor = Color(0xFF8998A8)
-                    )
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = apiToken, onValueChange = onApiTokenChange,
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("Token privado do dispositivo") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF78BDEB), unfocusedBorderColor = Color(0xFF465363),
-                        focusedLabelColor = Color(0xFF9CCEF0), unfocusedLabelColor = Color(0xFF8998A8)
-                    )
-                )
-                Button(onClick = onSave, modifier = Modifier.fillMaxWidth().padding(top = 14.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263D53))) {
-                    Text("SALVAR CONEXÃO")
-                }
-            }
-            Spacer(Modifier.height(22.dp))
-            Text("BRUCE • VOZ LOCAL • API INDEPENDENTE", color = Color(0xFF647586), fontSize = 9.sp, letterSpacing = 1.1.sp)
-        }
+        val intent = Intent(this, WakeWordService::class.java)
+        ContextCompat.startForegroundService(this, intent)
     }
 }
