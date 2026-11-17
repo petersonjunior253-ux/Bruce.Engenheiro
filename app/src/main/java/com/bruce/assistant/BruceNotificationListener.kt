@@ -6,7 +6,7 @@ import android.service.notification.StatusBarNotification
 import org.json.JSONArray
 import org.json.JSONObject
 
-class BruceNotificationListener : NotificationListenerService() {
+class BruceNotificationListener : NotificationListenerService() {\n    override fun onListenerConnected() { super.onListenerConnected(); persistSnapshot() }
     override fun onNotificationPosted(sbn: StatusBarNotification?) { persistSnapshot() }
     override fun onNotificationRemoved(sbn: StatusBarNotification?) { persistSnapshot() }
 
