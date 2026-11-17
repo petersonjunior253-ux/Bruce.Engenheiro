@@ -1,39 +1,61 @@
 # BRUCE API
 
-Secure OpenAI-compatible chat gateway and SQLite conversation/memory store.
+FastAPI privada para chat, histórico e memória. Não depende automaticamente de ChatGPT nem de assinatura ChatGPT. Chama um endpoint de inferência compatível com `/v1/chat/completions`.
 
-## Setup
+## Execução local
+
+Na pasta `services/api`:
 
 ```powershell
-cd services/api
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-Copy-Item .env.example .env
+ollama pull llama3.2
 ```
 
-Edit `.env` and set:
-- `BRUCE_API_KEY`: long random secret used by BRUCE clients.
-- `BRUCE_MODEL_BASE_URL`: provider-compatible API base URL.
-- `BRUCE_MODEL_API_KEY`: provider credential (server only).
-- `BRUCE_MODEL_NAME`: exact model identifier supported by your provider.
+Configure no terminal (use um token aleatório e privado):
 
-Start:
 ```powershell
-uvicorn main:app --host 127.0.0.1 --port 8787
+$env:BRUCE_API_KEY = "COLOQUE_UM_TOKEN_LONGO_E_ALEATORIO"
+$env:BRUCE_MODEL_BASE_URL = "http://127.0.0.1:11434/v1"
+$env:BRUCE_MODEL_NAME = "llama3.2"
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-The API refuses chat until a real model credential and model ID are configured. Do not expose this service publicly without HTTPS, authentication, rate limiting, and a production database.
+Verifique `GET /health`. Rotas privadas exigem `Authorization: Bearer SEU_TOKEN`.
 
-## Context and memory
+## Inferência própria
 
-The gateway retains conversation messages in SQLite and includes the latest configured message window plus saved memory records in each request. Context limits are still constrained by the selected model's context window. This service does not create a new neural network or increase the underlying model's intelligence; it securely connects BRUCE to a model provider.
+- Ollama local: `BRUCE_MODEL_BASE_URL=http://127.0.0.1:11434/v1`; `BRUCE_MODEL_NAME=llama3.2`; chave normalmente vazia.
+- Outro servidor compatível: informe URL base e nome exato do modelo. Se exigir credencial, configure `BRUCE_MODEL_API_KEY` apenas no servidor.
+- Nunca coloque chave de provedor no Android, navegador, repositório ou logs.
 
-## Routes
+**Atenção:** `127.0.0.1` aponta para a própria máquina onde a API roda. Uma API hospedada na nuvem não alcança automaticamente o Ollama instalado no computador. API e modelo precisam estar na mesma máquina, numa rede privada alcançável, ou usar um endpoint de inferência hospedado.
 
-- `GET /health` — non-secret status.
-- `POST /v1/chat` — authenticated model request.
-- `GET /v1/conversations` and `GET /v1/conversations/{id}`.
-- `POST /v1/memories`, `GET /v1/memories`.
+## Rotas
 
-All authenticated routes require `Authorization: Bearer <BRUCE_API_KEY>`.
+| Método | Rota | Uso |
+|---|---|---|
+| GET | `/health` | Estado básico |
+| POST | `/v1/chat` | Conversar com o modelo |
+| GET | `/v1/conversations` | Listar conversas |
+| GET | `/v1/conversations/{id}` | Ler mensagens |
+| PATCH | `/v1/conversations/{id}` | Renomear conversa |
+| DELETE | `/v1/conversations/{id}` | Apagar conversa |
+| GET | `/v1/memories` | Listar memórias |
+| POST | `/v1/memories` | Salvar memória |
+| DELETE | `/v1/memories/{id}` | Apagar memória |
+| GET | `/v1/capabilities` | Consultar capacidades declaradas |
+
+## Segurança antes de publicar
+
+A implementação atual usa um token Bearer compartilhado e SQLite. Antes de exposição pública, adicionar HTTPS, rate limiting, tokens individuais por dispositivo com revogação, limites de payload, auditoria sem conteúdo sensível, retenção configurável e testes de segurança. CORS não substitui autenticação.
+
+## Evolução planejada
+
+1. Testes automatizados de autenticação, chat, histórico, memória e falhas do provedor.
+2. Migrações e PostgreSQL para produção multi-instância.
+3. Streaming de tokens e cancelamento.
+4. Ferramentas com schemas, allowlist, confirmação e auditoria.
+5. STT/TTS streaming desacoplados do modelo de linguagem.
+6. Gestão de dispositivos, notificações e ações Android com permissões nativas.
