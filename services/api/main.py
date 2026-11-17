@@ -144,7 +144,7 @@ def offline_intent(text:str):
  if re.search(r"\b(que dia e hoje|data de hoje|qual a data)\b",normalized):
   return None,{}, "Hoje é "+datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y")+"."
  if re.search(r"\b(abrir|abra|abre|ir para|mostrar)\b.*\b(configuracoes|ajustes)\b",normalized):
-  section="accessibility" if "acessibilidade" in normalized else "notification_access" if "notificacoes" in normalized and ("acesso" in normalized or "permissao" in normalized) else "files" if "arquivo" in normalized else "settings"
+  section="accessibility" if "acessibilidade" in normalized else "notification_access" if "notificacoes" in normalized and ("acesso" in normalized or "permissao" in normalized) else "files" if "arquivo" in normalized else "wifi" if "wifi" in normalized else "bluetooth" if "bluetooth" in normalized else "sound" if "som" in normalized or "audio" in normalized else "display" if "tela" in normalized or "brilho" in normalized else "apps" if "aplicativo" in normalized else "settings"
   return "open_device_settings",{"section":section},"Vou abrir as configurações solicitadas."
  if re.search(r"\b(ler|mostrar|ver|consultar)\b.*\b(notificacoes)\b",normalized):
   return "list_notifications",{},"Vou consultar as notificações ativas."
@@ -174,6 +174,11 @@ def offline_intent(text:str):
  type_match=re.search(r"\b(?:digite|escreva|preencha)\s+(.+)$",text.strip(),re.I)
  if type_match:
   return "type_text",{"text":type_match.group(1).strip()},"Vou preencher o campo que estiver selecionado."
+ alarm_match=re.search(r"\b(?:alarme|despertador)\b.*?\b(\d{1,2})(?:\s*(?:h|:)\s*(\d{2}))?\b",normalized)
+ if alarm_match:
+  hour=int(alarm_match.group(1));minute=int(alarm_match.group(2) or 0)
+  if 0<=hour<=23 and 0<=minute<=59:
+   return "set_alarm",{"hour":hour,"minute":minute,"message":"BRUCE"},"Vou abrir o relógio para configurar o alarme."
  app_match=re.search(r"\b(?:abra|abrir|abre|inicie|iniciar|execute|executar)\s+(?:o\s+)?(?:app\s+|aplicativo\s+)?(.+)$",text.strip(),re.I)
  if app_match:
   name=app_match.group(1).strip().strip(" .!?")
