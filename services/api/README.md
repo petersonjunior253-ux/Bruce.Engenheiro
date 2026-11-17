@@ -1,6 +1,15 @@
 # BRUCE API
 
-FastAPI privada para chat, histórico e memória. Não depende automaticamente de ChatGPT nem de assinatura ChatGPT. Chama um endpoint de inferência compatível com `/v1/chat/completions`.
+API privada do assistente BRUCE, construída em FastAPI. Não usa a API do ChatGPT. O motor de linguagem é um endpoint OpenAI-compatible configurável, como Ollama ou outro servidor de inferência.
+
+## API hospedada
+
+- Endpoint: `https://bruce-personal-api-petersonjunior253-8756s-projects.vercel.app`
+- Runtime: FastAPI no Vercel Functions.
+- Autenticação: Bearer token privado.
+- Memória: SQLite persistido em armazenamento privado Vercel Blob (snapshot por requisição; adequada ao uso pessoal inicial, ainda não substitui PostgreSQL transacional em cenário multiusuário/concorrrente).
+- Voz neural: rota `POST /v1/voice` com Edge TTS pt-BR; depende de conectividade externa e pode recorrer à voz local do Android.
+- Modelo: ainda precisa de um endpoint de inferência alcançável pela nuvem. O endereço local `127.0.0.1` não funciona a partir da API hospedada.
 
 ## Execução local
 
@@ -13,7 +22,7 @@ pip install -r requirements.txt
 ollama pull llama3.2
 ```
 
-Configure no terminal (use um token aleatório e privado):
+Configure no terminal:
 
 ```powershell
 $env:BRUCE_API_KEY = "COLOQUE_UM_TOKEN_LONGO_E_ALEATORIO"
@@ -22,40 +31,54 @@ $env:BRUCE_MODEL_NAME = "llama3.2"
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Verifique `GET /health`. Rotas privadas exigem `Authorization: Bearer SEU_TOKEN`.
+Rotas privadas exigem `Authorization: Bearer SEU_TOKEN`.
 
 ## Inferência própria
 
-- Ollama local: `BRUCE_MODEL_BASE_URL=http://127.0.0.1:11434/v1`; `BRUCE_MODEL_NAME=llama3.2`; chave normalmente vazia.
-- Outro servidor compatível: informe URL base e nome exato do modelo. Se exigir credencial, configure `BRUCE_MODEL_API_KEY` apenas no servidor.
+- Ollama local: `BRUCE_MODEL_BASE_URL=http://127.0.0.1:11434/v1`, `BRUCE_MODEL_NAME=llama3.2`; chave vazia.
+- Outro servidor compatível: URL base, nome exato do modelo e chave apenas no servidor.
 - Nunca coloque chave de provedor no Android, navegador, repositório ou logs.
-
-**Atenção:** `127.0.0.1` aponta para a própria máquina onde a API roda. Uma API hospedada na nuvem não alcança automaticamente o Ollama instalado no computador. API e modelo precisam estar na mesma máquina, numa rede privada alcançável, ou usar um endpoint de inferência hospedado.
+- Para conectar Ollama local à API hospedada, será necessário expor o endpoint com um túnel privado seguro ou hospedar API e modelo na mesma rede.
 
 ## Rotas
 
 | Método | Rota | Uso |
 |---|---|---|
-| GET | `/health` | Estado básico |
-| POST | `/v1/chat` | Conversar com o modelo |
-| GET | `/v1/conversations` | Listar conversas |
-| GET | `/v1/conversations/{id}` | Ler mensagens |
-| PATCH | `/v1/conversations/{id}` | Renomear conversa |
-| DELETE | `/v1/conversations/{id}` | Apagar conversa |
-| GET | `/v1/memories` | Listar memórias |
-| POST | `/v1/memories` | Salvar memória |
-| DELETE | `/v1/memories/{id}` | Apagar memória |
-| GET | `/v1/capabilities` | Consultar capacidades declaradas |
+| GET | `/health` | Estado da API, modelo e armazenamento privado |
+| POST | `/v1/chat` | Conversa e despacho de ferramentas |
+| POST | `/v1/voice` | Geração de voz neural pt-BR |
+| POST | `/v1/device/register` | Registrar Android |
+| GET | `/v1/device/commands` | Buscar comandos pendentes |
+| GET | `/v1/device/commands/{id}` | Consultar resultado de ação |
+| POST | `/v1/device/commands/{id}/result` | Confirmar resultado do Android |
+| GET | `/v1/device/status` | Estado dos dispositivos |
+| GET/POST/DELETE | `/v1/memories` | Memória pessoal |
+| GET/DELETE | `/v1/conversations` | Histórico de conversas |
+| GET | `/v1/capabilities` | Ferramentas disponíveis |
 
-## Segurança antes de publicar
+## Ferramentas Android
 
-A implementação atual usa um token Bearer compartilhado e SQLite. Antes de exposição pública, adicionar HTTPS, rate limiting, tokens individuais por dispositivo com revogação, limites de payload, auditoria sem conteúdo sensível, retenção configurável e testes de segurança. CORS não substitui autenticação.
+- Abrir aplicativos e listar aplicativos instalados.
+- Ler texto visível da tela, tocar em controles por texto, digitar em campo focado, rolar e voltar/início (requer acessibilidade).
+- Listar e ler arquivos de texto e criar arquivos novos sem sobrescrever (requer acesso a todos os arquivos).
+- Ler notificações ativas (requer Notification Access).
+- Criar notificação local, abrir seletor de arquivos, criar evento no calendário via tela de confirmação, configurar alarme e abrir configurações.
+- Ações que alteram dados abrem confirmação nativa quando disponível. O BRUCE não deve alegar sucesso sem confirmação do dispositivo.
 
-## Evolução planejada
+## Permissões Android
 
-1. Testes automatizados de autenticação, chat, histórico, memória e falhas do provedor.
-2. Migrações e PostgreSQL para produção multi-instância.
-3. Streaming de tokens e cancelamento.
-4. Ferramentas com schemas, allowlist, confirmação e auditoria.
-5. STT/TTS streaming desacoplados do modelo de linguagem.
-6. Gestão de dispositivos, notificações e ações Android com permissões nativas.
+O usuário habilita no próprio Samsung:
+1. Microfone e notificações para o aplicativo.
+2. Acessibilidade: BRUCE Device Control.
+3. Acesso a notificações: BRUCE Notification Access.
+4. Acesso a todos os arquivos, se quiser gestão de arquivos pelo BRUCE.
+
+O Android não permite conceder essas permissões silenciosamente por uma API externa. O app abre as telas corretas; o proprietário precisa confirmar.
+
+## Limites conhecidos
+
+- O serviço de escuta offline Vosk está incluído no APK, mas a detecção precisa de validação física no Samsung.
+- Voz neural usa Edge TTS online; offline, o app recorre ao mecanismo TTS do Android.
+- O endpoint de modelo ainda não está configurado na hospedagem.
+- A persistência Blob+SQLite é para uso pessoal inicial; antes de multiusuário ou alto volume, migrar para Postgres e autenticação por dispositivo.
+- Não existe controle irrestrito de todo o Android: algumas telas, apps bancários e áreas protegidas bloqueiam automação por segurança do sistema.
