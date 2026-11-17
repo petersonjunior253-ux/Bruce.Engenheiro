@@ -118,8 +118,15 @@ class WakeWordService : Service(), RecognitionListener {
         try {
             when (tool) {
                 "open_app" -> {
-                    val pkg = args.optString("package_name")
-                    val launch = packageManager.getLaunchIntentForPackage(pkg) ?: throw IllegalArgumentException("Aplicativo não encontrado: $pkg")
+                    val appName = args.optString("app_name")
+                    val requestedPackage = args.optString("package_name")
+                    val pkg = requestedPackage.ifBlank {
+                        packageManager.getInstalledApplications(PackageManager.GET_META_DATA).firstOrNull {
+                            packageManager.getApplicationLabel(it).toString().contains(appName, ignoreCase = true)
+                        }?.packageName.orEmpty()
+                    }
+                    if (pkg.isBlank()) throw IllegalArgumentException("Não encontrei o aplicativo: $appName")
+                    val launch = packageManager.getLaunchIntentForPackage(pkg) ?: throw IllegalArgumentException("Não foi possível abrir: $pkg")
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(launch)
                     result.put("opened", true).put("package_name", pkg)
                 }
@@ -168,6 +175,11 @@ class WakeWordService : Service(), RecognitionListener {
                     startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); result.put("settings_opened", section)
                 }
                 "list_notifications" -> {
+                    val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty().contains(packageName)
+                    if (!enabled) {
+                        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        throw IllegalStateException("Habilite o acesso às notificações do BRUCE nas configurações que foram abertas.")
+                    }
                     val raw = getSharedPreferences("bruce_notification_cache", MODE_PRIVATE).getString("active_notifications", "[]") ?: "[]"
                     val notifications = JSONArray(raw)
                     result.put("notifications", notifications).put("count", notifications.length())
