@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "BRUCE — Personal Assistant",
+  "short_name": "BRUCE",
+  "description": "Seu assistente pessoal por voz e texto.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08090c",
+  "theme_color": "#08090c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/bruce.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
