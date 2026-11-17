@@ -1,0 +1,36 @@
+name: BRUCE API validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api-validation.yml"
+  pull_request:
+    paths:
+      - "services/api/**"
+      - ".github/workflows/api-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/api/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python modules
+        run: python -m compileall -q .
+      - name: Verify FastAPI app imports
+        env:
+          BRUCE_API_KEY: ci-test-token-not-for-production
+        run: python -c "from main import app; assert app.title == 'BRUCE Personal Intelligence API'; print('BRUCE API import OK')"
