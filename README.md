@@ -1,26 +1,49 @@
-# BRUCE — Assistente pessoal Android
+# BRUCE — Assistente pessoal
 
-Projeto nativo Android do BRUCE, com interface neural escura e foco em interação por voz.
+BRUCE é um projeto de assistente pessoal próprio, com cliente Android nativo, API privada e inferência conectável a modelos compatíveis com OpenAI. O objetivo é evoluir para uma experiência de voz contínua, memória pessoal controlável e automações Android com autorização explícita.
 
-## O que já está no código
-- Interface Android nativa em Jetpack Compose, com núcleo neural animado.
-- Reconhecimento offline da palavra de ativação **BRUCE** usando Vosk em português.
-- Serviço de microfone em primeiro plano, com notificação persistente e ação para desativar.
-- Captura de uma frase falada após a palavra de ativação.
-- Respostas faladas locais para comandos básicos (hora, data e identidade).
-- Permissões explícitas de microfone, notificações, serviço de microfone e internet.
-- Workflow GitHub Actions para compilar e publicar o APK de teste como artefato.
+## Estado real do projeto
 
-## Gerar APK
-Abra a aba **Actions**, escolha **Build BRUCE APK**, abra a execução concluída e baixe o artefato **BRUCE-Android-APK**.
+| Camada | Implementado no repositório | Ainda precisa ser feito/testado |
+|---|---|---|
+| Android | App Kotlin/Compose, interface inicial, serviço foreground de microfone, wake word Vosk em português e TTS local | Teste em Samsung/Android 14, diálogo contínuo robusto, ações Android e UX final |
+| API | FastAPI, autenticação Bearer, SQLite, chat compatível com API OpenAI, histórico e memória persistente | Deploy HTTPS, gestão de dispositivos/usuários, limites, observabilidade e testes automatizados |
+| IA | Adaptador de endpoint compatível; padrão local Ollama `http://127.0.0.1:11434/v1`, modelo `llama3.2` | Escolha/benchmark de modelo, roteamento, ferramentas e avaliação de qualidade |
+| Voz | Reconhecimento de palavra-chave offline no Android e voz TTS do dispositivo | STT/TTS neural de alta qualidade, streaming, interrupção e conversa full-duplex |
+| Automações | Serviço Android preparado para receber comandos de voz | Camada de ferramentas com permissões, confirmação e registro de execução |
+| Web | Prévia visual hospedada separadamente | Interface final conectada à API real; a prévia antiga não é o produto final |
 
-## Limites conhecidos desta versão
-Esta ainda é uma versão de engenharia. A detecção da palavra e o fluxo de captura de fala estão no código, mas precisam ser testados no aparelho real (incluindo Samsung/Android 14). Não declare o BRUCE como assistente completo até concluir esses testes.
+**Não considere uma capacidade pronta apenas porque existe uma tela ou endpoint.** A coluna de implementação é código presente; a segunda coluna é trabalho pendente.
 
-A conversa com um modelo de IA na nuvem, memória pessoal sincronizada, chamadas a ferramentas, automações, notificações inteligentes e diálogo contínuo ainda não estão conectados. A assinatura do ChatGPT não fornece automaticamente acesso à API para um aplicativo externo; uma integração de IA exige um backend seguro com credencial de API, sem embutir segredos no APK nem no repositório.
+## Princípios do BRUCE
 
-## Android 14 e execução em segundo plano
-O microfone é mantido por um serviço em primeiro plano, visível por uma notificação. O serviço deve ser iniciado quando o aplicativo estiver visível e as permissões forem concedidas. As regras do Android 14 restringem iniciar serviços de microfone a partir do segundo plano; por isso, não se promete inicialização automática após reinicialização do telefone. O usuário pode parar a escuta pela ação na notificação.
+- Independente da API da OpenAI/ChatGPT. O backend pode usar Ollama local ou qualquer servidor de inferência compatível.
+- Segredos ficam no servidor; nunca inserir chave de provedor no APK, HTML ou Git.
+- Memória visível, editável e apagável pelo proprietário.
+- Autonomia gradual: ações reversíveis e locais podem ser automatizadas após configuração; ações sensíveis, externas, financeiras ou irreversíveis exigem aprovação.
+- Microfone e escuta em segundo plano sempre visíveis e controláveis pelo usuário, respeitando as restrições do Android.
+- O assistente informa quando não tem acesso, ferramenta ou confirmação de uma ação.
 
-## Segurança
-Não comitar chaves de API, tokens, senhas, dados pessoais ou gravações. Nenhuma conversa de voz é enviada a um servidor nesta versão; reconhecimento de fala e respostas básicas são locais.
+## API local
+
+Consulte [services/api/README.md](services/api/README.md).
+
+Resumo:
+1. Instale Python 3.11+.
+2. Instale dependências: `pip install -r services/api/requirements.txt`.
+3. Inicie Ollama e baixe um modelo: `ollama pull llama3.2`.
+4. Configure `BRUCE_API_KEY` com um token longo e aleatório.
+5. Execute a API a partir de `services/api`: `uvicorn main:app --host 0.0.0.0 --port 8000`.
+
+O endereço `127.0.0.1` só aponta para a própria máquina que executa a API. Se a API estiver na nuvem, não consegue alcançar automaticamente o Ollama instalado no PC; é necessário hospedar o modelo em uma rede/endereço alcançável ou manter API e modelo na mesma máquina.
+
+## APK
+
+Abra GitHub Actions, execute o workflow de build Android e baixe o artefato `BRUCE-Android-APK`.
+
+## Segurança e limites
+
+- Não comitar tokens, chaves, senhas, gravações, banco pessoal ou arquivos `.env`.
+- A API atual usa um único token de dispositivo compartilhado; antes de abrir para internet, implementar tokens por dispositivo, rotação/revogação, rate limiting e TLS.
+- SQLite é adequado para desenvolvimento/instância única; para escala multi-instância, migrar para PostgreSQL.
+- O serviço de microfone não deve prometer escuta permanente após reinicialização: Android limita o início de serviços de microfone em segundo plano.
