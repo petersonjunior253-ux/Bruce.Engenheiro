@@ -34,3 +34,5 @@ jobs:
         env:
           BRUCE_API_KEY: ci-test-token-not-for-production
         run: python -c "from main import app; assert app.title == 'BRUCE Personal Intelligence API'; print('BRUCE API import OK')"
+      - name: Test offline command routing
+        run: python -m unittest discover -s tests -v
