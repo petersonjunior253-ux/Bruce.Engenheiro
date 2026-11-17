@@ -19,9 +19,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BRUCE_", env_file=".env", extra="ignore")
     api_key: str = "development-only-change-me"
-    model_base_url: str = "https://api.openai.com/v1"
+    model_base_url: str = "http://127.0.0.1:11434/v1"
     model_api_key: str = ""
-    model_name: str = ""
+    model_name: str = "llama3.2"
     system_prompt: str = (
         "You are BRUCE, the user's personal assistant. Be capable, direct, thoughtful, "
         "proactive, and transparent. Use the conversation context. Never claim an action "
@@ -110,7 +110,9 @@ def health():
     return {
         "status": "ok",
         "service": "BRUCE Personal Intelligence API",
-        "model_configured": bool(settings.model_api_key and settings.model_name),
+        "model_configured": bool(settings.model_name),
+        "model_provider": "ollama-compatible",
+        "voice": "client-or-device",
         "database": "sqlite",
         "time": int(time.time()),
     }
@@ -118,7 +120,7 @@ def health():
 
 @app.post("/v1/chat", dependencies=[Depends(require_auth)])
 async def chat(payload: ChatRequest):
-    if not settings.model_api_key or not settings.model_name:
+    if not settings.model_name:
         raise HTTPException(503, "Modelo não configurado. Defina BRUCE_MODEL_API_KEY e BRUCE_MODEL_NAME no servidor.")
     conversation_id = payload.conversation_id or hashlib.sha256(
         f"{time.time_ns()}".encode()
@@ -151,7 +153,9 @@ async def chat(payload: ChatRequest):
     messages = [{"role": "system", "content": system}]
     messages.extend(context_messages[-settings.max_context_messages:])
     url = settings.model_base_url.rstrip("/") + "/chat/completions"
-    headers = {"Authorization": f"Bearer {settings.model_api_key}", "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
+    if settings.model_api_key:
+        headers["Authorization"] = f"Bearer {settings.model_api_key}"
     body = {
         "model": settings.model_name,
         "messages": messages,
@@ -216,3 +220,54 @@ def memories():
     with connect_db() as conn:
         rows = conn.execute("SELECT id, category, content, created_at FROM memories ORDER BY id DESC LIMIT 100").fetchall()
     return [dict(row) for row in rows]
+
+
+class ConversationTitleRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+
+@app.patch("/v1/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
+def rename_conversation(conversation_id: str, payload: ConversationTitleRequest):
+    with connect_db() as conn:
+        cursor = conn.execute(
+            "UPDATE conversations SET title=?, updated_at=? WHERE id=?",
+            (payload.title.strip(), int(time.time()), conversation_id),
+        )
+        conn.commit()
+    if cursor.rowcount == 0:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return {"updated": True, "conversation_id": conversation_id}
+
+
+@app.delete("/v1/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
+def delete_conversation(conversation_id: str):
+    with connect_db() as conn:
+        conn.execute("DELETE FROM messages WHERE conversation_id=?", (conversation_id,))
+        cursor = conn.execute("DELETE FROM conversations WHERE id=?", (conversation_id,))
+        conn.commit()
+    if cursor.rowcount == 0:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return {"deleted": True, "conversation_id": conversation_id}
+
+
+@app.delete("/v1/memories/{memory_id}", dependencies=[Depends(require_auth)])
+def delete_memory(memory_id: int):
+    with connect_db() as conn:
+        cursor = conn.execute("DELETE FROM memories WHERE id=?", (memory_id,))
+        conn.commit()
+    if cursor.rowcount == 0:
+        raise HTTPException(404, "Memória não encontrada.")
+    return {"deleted": True, "id": memory_id}
+
+
+@app.get("/v1/capabilities", dependencies=[Depends(require_auth)])
+def capabilities():
+    return {
+        "assistant": "BRUCE",
+        "chat": True,
+        "persistent_conversations": True,
+        "persistent_memory": True,
+        "model": {"name": settings.model_name, "base_url": settings.model_base_url},
+        "tools": {"android_actions": False, "web_search": False, "calendar": False, "notifications": False},
+        "note": "Capacidades só são anunciadas como ativas quando há uma integração real conectada.",
+    }
