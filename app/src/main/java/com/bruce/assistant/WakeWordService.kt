@@ -33,6 +33,15 @@ class WakeWordService : Service(), RecognitionListener {
     private var lastWakeAt = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_STICKY
+    }
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
@@ -192,6 +201,7 @@ class WakeWordService : Service(), RecognitionListener {
             .setContentTitle("BRUCE")
             .setContentText(message)
             .setContentIntent(open)
+            .addAction(android.R.drawable.ic_media_pause, "Desativar", PendingIntent.getService(this, 2, Intent(this, WakeWordService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             .setOngoing(true)
             .build()
     }
@@ -215,5 +225,6 @@ class WakeWordService : Service(), RecognitionListener {
         private const val CHANNEL_ID = "bruce_voice"
         private const val NOTIFICATION_ID = 41
         private const val SAMPLE_RATE = 16000.0f
+        private const val ACTION_STOP = "com.bruce.assistant.STOP"
     }
 }
