@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib,hmac,json,os,secrets,sqlite3,time
+import asyncio,hashlib,hmac,json,os,secrets,sqlite3,time
 from pathlib import Path
 from typing import Literal,Any
 import httpx
@@ -8,21 +8,25 @@ from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from pydantic_settings import BaseSettings,SettingsConfigDict
+from vercel import blob
 import edge_tts
 
 class Settings(BaseSettings):
  model_config=SettingsConfigDict(env_prefix="BRUCE_",env_file=".env",extra="ignore")
  api_key:str="development-only-change-me"
- model_base_url:str="http://127.0.0.1:11434/v1"
+ model_base_url:str=os.getenv("BRUCE_MODEL_BASE_URL", "" if os.getenv("VERCEL") else "http://127.0.0.1:11434/v1")
  model_api_key:str=""
  model_name:str="llama3.2"
  system_prompt:str="Você é BRUCE, assistente pessoal privado do usuário. Responda em português brasileiro, seja inteligente, direto, natural e proativo. Nunca afirme que executou algo sem confirmação do dispositivo. Para ações críticas, peça autorização explícita. Use ferramentas reais quando disponíveis."
  max_context_messages:int=80
  max_output_tokens:int=4096
- database_path:str="./data/bruce.sqlite3"
+ database_path:str=os.getenv("BRUCE_DATABASE_PATH", "/tmp/bruce.sqlite3" if os.getenv("VERCEL") else "./data/bruce.sqlite3")
  device_online_seconds:int=90
 settings=Settings()
 db=Path(settings.database_path);db.parent.mkdir(parents=True,exist_ok=True)
+blob_path="bruce/private-state.sqlite3"
+db_lock=asyncio.Lock()
+blob_enabled=bool(os.getenv("BLOB_READ_WRITE_TOKEN") or os.getenv("BLOB_STORE_ID"))
 app=FastAPI(title="BRUCE Personal Intelligence API",version="1.0.0")
 app.add_middleware(CORSMiddleware,allow_origins=os.getenv("BRUCE_ALLOWED_ORIGINS","https://bruce-preview-six.vercel.app,https://bruce-preview-petersonjunior253-8756s-projects.vercel.app,http://localhost:5173,http://127.0.0.1:5173").split(","),allow_credentials=False,allow_methods=["GET","POST","PATCH","DELETE"],allow_headers=["Authorization","Content-Type"])
 
@@ -40,6 +44,26 @@ def init_db():
   c.commit()
 @app.on_event("startup")
 def startup():init_db()
+
+@app.middleware("http")
+async def durable_private_state(request, call_next):
+ if not blob_enabled or request.url.path in {"/health","/v1/voice","/docs","/openapi.json","/redoc"} or request.method=="OPTIONS":
+  return await call_next(request)
+ async with db_lock:
+  try:
+   stored=await blob.get_blob(blob_path,access="private")
+   db.write_bytes(stored.body)
+  except blob.BlobNotFoundError:
+   init_db()
+  except Exception:
+   raise HTTPException(503,"O armazenamento privado do BRUCE está indisponível; os dados não foram alterados.")
+  response=await call_next(request)
+  try:
+   await blob.put_blob(blob_path,db.read_bytes(),access="private",allow_overwrite=True,content_type="application/vnd.sqlite3",cache_control_max_age=60)
+  except Exception:
+   raise HTTPException(503,"Não consegui salvar a memória persistente do BRUCE. A operação não foi confirmada.")
+  return response
+
 def auth(authorization:str|None=Header(default=None)):
  if not settings.api_key or settings.api_key=="development-only-change-me":raise HTTPException(503,"Configure BRUCE_API_KEY no servidor.")
  if not authorization or not hmac.compare_digest(authorization,"Bearer "+settings.api_key):raise HTTPException(401,"Token privado inválido.")
@@ -82,9 +106,10 @@ async def neural_voice(p:VoiceRequest):
 
 @app.get("/health")
 def health():
- return {"status":"ok","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_name),"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+ return {"status":"ok","service":"BRUCE Personal Intelligence API","model_configured":bool(settings.model_base_url and settings.model_name),"persistent_storage":blob_enabled,"model_name":settings.model_name,"model_provider":"OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 @app.post("/v1/chat",dependencies=[Depends(auth)])
 async def chat(p:ChatRequest):
+ if not settings.model_base_url: raise HTTPException(503,"API BRUCE ativa, mas falta configurar BRUCE_MODEL_BASE_URL com o endpoint público do seu modelo. Ollama em 127.0.0.1 não é acessível pela nuvem.")
  now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
  with connect() as c:
   c.execute("INSERT OR IGNORE INTO conversations VALUES(?,?,?,?)",(cid,"Nova conversa",now,now))
