@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
@@ -23,10 +24,13 @@ class WakeWordService : Service(), RecognitionListener {
     private var model: Model? = null
     private var tts: TextToSpeech? = null
     private var triggeredAt = 0L
+    private var wakeLock: PowerManager.WakeLock? = null
     override fun onCreate() {
         super.onCreate()
         createChannel()
         startForeground(41, notification("Preparando reconhecimento da palavra BRUCE"))
+        val power = getSystemService(PowerManager::class.java)
+        wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BRUCE:WakeWord").also { it.acquire() }
         tts = TextToSpeech(this) { status -> if (status == TextToSpeech.SUCCESS) tts?.language = Locale("pt", "BR") }
         StorageService.unpack(this, "model-pt", "model-pt",
             { loaded -> model = loaded; beginRecognition() },
@@ -67,6 +71,8 @@ class WakeWordService : Service(), RecognitionListener {
     private fun updateNotification(message: String) { getSystemService(NotificationManager::class.java).notify(41, notification(message)) }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
-        speech?.stop(); speech = null; model?.close(); tts?.shutdown(); super.onDestroy()
+        speech?.stop(); speech?.shutdown(); speech = null; model?.close(); tts?.shutdown()
+        wakeLock?.let { if (it.isHeld) it.release() }; wakeLock = null
+        super.onDestroy()
     }
 }
