@@ -39,7 +39,8 @@ export default function App(){
     <div className="core-ripple ripple-one"/><div className="core-ripple ripple-two"/>
    </div>
    <div className="core-title"><span>PROTOCOLO</span><h1>BRUCE <em>WAYNE</em></h1><small>SEU ASSISTENTE PESSOAL · SEMPRE AO SEU LADO</small></div>
-   <div className="core-presence">{messages.length===0?"Estou aqui. O que vamos resolver hoje?":"Sua central de comando pessoal"}</div>\n   <div className="core-status"><span className={connected?"status-dot active":"status-dot"}/>{busy?"PROCESSANDO SOLICITAÇÃO":listening?"ESCUTANDO SUA VOZ":speaking?"BRUCE ESTÁ FALANDO":connected?"SISTEMA OPERACIONAL":"AGUARDANDO CONEXÃO"}<span className="status-divider"/> {model}</div>
+   <div className="core-presence">{messages.length===0?"Estou aqui. O que vamos resolver hoje?":"Sua central de comando pessoal"}</div>
+   <div className="core-status"><span className={connected?"status-dot active":"status-dot"}/>{busy?"PROCESSANDO SOLICITAÇÃO":listening?"ESCUTANDO SUA VOZ":speaking?"BRUCE ESTÁ FALANDO":connected?"SISTEMA OPERACIONAL":"AGUARDANDO CONEXÃO"}<span className="status-divider"/> {model}</div>
    {messages.length>0&&<div className="conversation-float" ref={scrollRef}>{messages.slice(-5).map((m,i)=><article className={m.role} key={i}><label>{m.role==="assistant"?"BRUCE":"VOCÊ"}</label><p>{m.text}</p>{m.role==="assistant"&&<button onClick={()=>speak(m.text)}><Volume2 size={13}/> Ouvir</button>}</article>)}{busy&&<div className="thinking"><LoaderCircle size={15}/> BRUCE está processando</div>}</div>}
   </section>
   <footer className="control-deck">
