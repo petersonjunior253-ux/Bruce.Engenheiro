@@ -203,8 +203,12 @@ class WakeWordService : Service(), RecognitionListener {
     private fun speakAndReturn(message: String) {
         awaitingCommand = false
         stopSpeech()
-        tts?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "bruce-answer")
-            ?: mainHandler.postDelayed({ startWakeRecognition() }, 1500)
+        val engine = tts
+        if (engine != null) {
+            engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "bruce-answer")
+        } else {
+            mainHandler.postDelayed({ startWakeRecognition() }, 1500)
+        }
     }
 
     private fun containsBruce(raw: String?): Boolean = extractText(raw).contains("bruce")
