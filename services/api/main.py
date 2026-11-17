@@ -146,10 +146,10 @@ async def chat(payload: ChatRequest):
     system = settings.system_prompt
     if memory:
         system += "\n\nMemórias fornecidas pelo usuário:\n" + memory
+    context_messages = [{"role": row["role"], "content": row["content"]} for row in history]
+    context_messages.extend({"role": item.role, "content": item.content} for item in payload.messages)
     messages = [{"role": "system", "content": system}]
-    messages.extend({"role": row["role"], "content": row["content"]} for row in history)
-    messages.extend({"role": item.role, "content": item.content} for item in payload.messages)
-    messages = messages[-(settings.max_context_messages + 1):]
+    messages.extend(context_messages[-settings.max_context_messages:])
     url = settings.model_base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {settings.model_api_key}", "Content-Type": "application/json"}
     body = {
