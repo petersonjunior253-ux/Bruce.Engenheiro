@@ -64,7 +64,8 @@ TOOLS=[
  {"type":"function","function":{"name":"set_alarm","description":"Abrir o relógio Android para configurar um alarme.","parameters":{"type":"object","properties":{"hour":{"type":"integer"},"minute":{"type":"integer"},"message":{"type":"string"}},"required":["hour","minute"]}}},
  {"type":"function","function":{"name":"open_device_settings","description":"Abrir uma página de configurações Android solicitada pelo usuário.","parameters":{"type":"object","properties":{"section":{"type":"string","enum":["settings","wifi","bluetooth","sound","display","apps","accessibility","notifications","notification_access"]}},"required":["section"]}}},
  {"type":"function","function":{"name":"get_device_info","description":"Consultar informações básicas do dispositivo conectado.","parameters":{"type":"object","properties":{} } }},
- {"type":"function","function":{"name":"list_installed_apps","description":"Listar aplicativos instalados e visíveis no Android.","parameters":{"type":"object","properties":{} } }},\n {"type":"function","function":{"name":"list_notifications","description":"Ler notificações ativas do Android. Requer que o usuário habilite o acesso a notificações do BRUCE nas configurações do sistema.","parameters":{"type":"object","properties":{} } }}
+ {"type":"function","function":{"name":"list_installed_apps","description":"Listar aplicativos instalados e visíveis no Android.","parameters":{"type":"object","properties":{} } }},
+ {"type":"function","function":{"name":"list_notifications","description":"Ler notificações ativas do Android. Requer que o usuário habilite o acesso a notificações do BRUCE nas configurações do sistema.","parameters":{"type":"object","properties":{} } }}
 ]
 @app.post("/v1/voice",dependencies=[Depends(auth)])
 async def neural_voice(p:VoiceRequest):
