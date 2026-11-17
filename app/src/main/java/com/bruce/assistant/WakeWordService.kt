@@ -12,6 +12,7 @@ import android.provider.AlarmClock
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Build
+import android.os.Build
 import android.media.MediaPlayer
 import android.os.IBinder
 import android.os.Looper
@@ -347,8 +348,8 @@ class WakeWordService : Service(), RecognitionListener {
                                 speakAndReturn(text)
                                 true
                             }
-                            prepareAsync()
                             setOnPreparedListener { it.start(); updateNotification("BRUCE está falando com voz neural.") }
+                            prepareAsync()
                         }
                     } catch (_: Exception) { speakAndReturn(text) }
                 }
