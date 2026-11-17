@@ -164,7 +164,7 @@ def offline_intent(text:str):
  if re.search(r"\b(abrir|mostrar|selecionar)\b.*\b(arquivos|documentos|meus arquivos)\b",normalized):
   return "open_file_picker",{"mime_type":"*/*"},"Abrindo o seletor de arquivos."
  if re.search(r"\b(listar|mostrar)\b.*\b(arquivos|pastas)\b",normalized):
-  path_match=re.search(r"\b(?:pasta|em)\s+([a-z0-9_./ -]+)$",normalized)
+  path_match=re.search(r"\b(?:pasta|em)\s+([a-z0-9_./ -]+)$",text.strip(),re.I)
   return "list_files",{"path":path_match.group(1).strip() if path_match else ""},"Vou listar os arquivos disponíveis."
  file_match=re.search(r"\b(?:ler|abrir)\s+(?:o\s+)?arquivo\s+(.+)$",text.strip(),re.I)
  if file_match:
