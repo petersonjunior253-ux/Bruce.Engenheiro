@@ -57,7 +57,7 @@ class VoiceRequest(BaseModel):
  text:str=Field(min_length=1,max_length=12000)
  voice:str="pt-BR-AntonioNeural"
 TOOLS=[
- {"type":"function","function":{"name":"open_app","description":"Abrir um aplicativo instalado no Android do usuário pelo nome ou pacote.","parameters":{"type":"object","properties":{"package_name":{"type":"string"},"app_name":{"type":"string"}},"required":["package_name"]}}},
+ {"type":"function","function":{"name":"open_app","description":"Abrir um aplicativo instalado no Android do usuário pelo nome ou pacote.","parameters":{"type":"object","properties":{"package_name":{"type":"string"},"app_name":{"type":"string"}},"required":["app_name"]}}},
  {"type":"function","function":{"name":"create_calendar_event","description":"Criar um evento no calendário Android. O aplicativo mostrará a tela de confirmação antes de salvar.","parameters":{"type":"object","properties":{"title":{"type":"string"},"start_iso":{"type":"string"},"end_iso":{"type":"string"},"description":{"type":"string"}},"required":["title","start_iso"]}}},
  {"type":"function","function":{"name":"open_file_picker","description":"Abrir seletor nativo de arquivos para o usuário escolher um documento.","parameters":{"type":"object","properties":{"mime_type":{"type":"string"}}}}},
  {"type":"function","function":{"name":"create_notification","description":"Mostrar uma notificação local no Android.","parameters":{"type":"object","properties":{"title":{"type":"string"},"message":{"type":"string"}},"required":["title","message"]}}},
