@@ -110,6 +110,12 @@ TOOLS=[
  {"type":"function","function":{"name":"list_files","description":"Listar arquivos e pastas no armazenamento compartilhado do Android. Requer que o usuário conceda acesso a todos os arquivos nas configurações.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Pasta relativa, por exemplo Download ou Documents"}}}}},
  {"type":"function","function":{"name":"read_file","description":"Ler um arquivo de texto no armazenamento compartilhado do Android. Requer acesso a todos os arquivos e limita a leitura a 1 MB.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Caminho relativo, por exemplo Download/notas.txt"}},"required":["path"]}}},
  {"type":"function","function":{"name":"create_text_file","description":"Criar um arquivo de texto novo no armazenamento compartilhado. Nunca sobrescreve arquivos existentes. Requer acesso a todos os arquivos.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}}
+ {"type":"function","function":{"name":"create_task","description":"Registrar uma atividade ou compromisso pessoal único na agenda BRUCE. Entenda pedidos como hoje às 20h, amanhã de manhã, sexta às 14:30 ou daqui a duas horas. due_at deve ser data/hora ISO local America/Sao_Paulo YYYY-MM-DDTHH:MM; se não houver horário, use YYYY-MM-DD. Pergunte se faltar informação essencial. Nunca torne recorrente sem pedido explícito.","parameters":{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string","enum":["rotina","estudos","treino","trabalho","pessoal","saude","geral"]},"due_at":{"type":"string","description":"Data e hora local America/Sao_Paulo em YYYY-MM-DDTHH:MM, ou YYYY-MM-DD"},"notes":{"type":"string"}},"required":["title","category"]}}},
+ {"type":"function","function":{"name":"list_tasks","description":"Consultar compromissos e tarefas, incluindo agenda de hoje, mais tarde, amanhã e semana. Use status pending para pendências, completed para concluídas, all para todas.","parameters":{"type":"object","properties":{"status":{"type":"string","enum":["pending","completed","all"]},"category":{"type":"string"},"date_from":{"type":"string","description":"Data inicial YYYY-MM-DD"},"date_to":{"type":"string","description":"Data final YYYY-MM-DD"}}}}},
+ {"type":"function","function":{"name":"complete_task","description":"Marcar uma atividade como concluída pelo identificador ou título.","parameters":{"type":"object","properties":{"task_id":{"type":"string"},"title":{"type":"string"}}}}},
+ {"type":"function","function":{"name":"save_memory","description":"Salvar uma preferência ou informação que o usuário pediu explicitamente para lembrar.","parameters":{"type":"object","properties":{"category":{"type":"string"},"content":{"type":"string"}},"required":["content"]}}},
+ {"type":"function","function":{"name":"list_memories","description":"Consultar memórias pessoais salvas.","parameters":{"type":"object","properties":{"category":{"type":"string"}}}}},
+ {"type":"function","function":{"name":"delete_memory","description":"Apagar uma memória pessoal específica que o usuário pediu para esquecer.","parameters":{"type":"object","properties":{"memory_id":{"type":"integer"}},"required":["memory_id"]}}}
 ]
 @app.post("/v1/voice",dependencies=[Depends(auth)])
 async def neural_voice(p:VoiceRequest):
@@ -228,7 +234,7 @@ async def chat(p:ChatRequest):
   c.execute("UPDATE conversations SET updated_at=?,title=CASE WHEN title='Nova conversa' THEN ? ELSE title END WHERE id=?",(now,title,cid));c.commit()
  with connect() as c:mem=c.execute("SELECT category,content FROM memories ORDER BY id DESC LIMIT 30").fetchall()
  with connect() as c:devices=c.execute("SELECT id,name,last_seen FROM devices WHERE last_seen>=?",(now-settings.device_online_seconds,)).fetchall()
- context=settings.system_prompt
+ context=settings.system_prompt+"\\n\\nData e hora atuais do usuário: "+datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%A, %d/%m/%Y %H:%M")+" (America/Sao_Paulo). Interprete hoje, mais tarde, amanhã e daqui a X horas usando este relógio. Antes de salvar compromisso, converta para YYYY-MM-DDTHH:MM no fuso local. Se disser hoje às 20h, use a data de hoje e 20:00. Compromissos são únicos por padrão; nunca crie recorrência sem pedido explícito."
  if mem:context+="\n\nMemórias do usuário:\n"+"\n".join(f"- [{x['category']}] {x['content']}" for x in mem)
  if devices:context+="\n\nUm dispositivo Android está conectado e pode receber comandos por ferramentas. Use-as somente quando o usuário pedir uma ação concreta. O aplicativo Android exige confirmação em ações que alteram dados."
  with connect() as c:recent=c.execute("SELECT tool,status,result FROM device_commands ORDER BY created_at DESC LIMIT 5").fetchall()
@@ -292,6 +298,9 @@ async def chat(p:ChatRequest):
       query="SELECT id,title,category,due_at,notes,status,created_at FROM tasks";clauses=[];params=[]
       if status in {"pending","completed"}:clauses.append("status=?");params.append(status)
       if category:clauses.append("category=?");params.append(category)
+      date_from=str(args.get("date_from") or "").strip();date_to=str(args.get("date_to") or "").strip()
+      if date_from:clauses.append("substr(due_at,1,10)>=?");params.append(date_from)
+      if date_to:clauses.append("substr(due_at,1,10)<=?");params.append(date_to)
       if clauses:query+=" WHERE "+" AND ".join(clauses)
       query+=" ORDER BY CASE WHEN due_at IS NULL OR due_at='' THEN 1 ELSE 0 END,due_at,created_at DESC LIMIT 50"
       local_results.append({"tool":name,"tasks":[dict(row) for row in c.execute(query,params).fetchall()]})
