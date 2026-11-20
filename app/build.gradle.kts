@@ -3,6 +3,30 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+val voskModelAssets = layout.buildDirectory.dir("generated/voskAssets")
+val downloadVoskModel by tasks.registering {
+    val archiveFile = layout.buildDirectory.file("downloads/vosk-model-small-pt-0.3.zip")
+    outputs.dir(voskModelAssets)
+    doLast {
+        val archive = archiveFile.get().asFile
+        if (!archive.exists()) {
+            archive.parentFile.mkdirs()
+            java.net.URL("https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip").openStream().use { input ->
+                archive.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        val root = voskModelAssets.get().asFile
+        root.mkdirs()
+        copy { from(zipTree(archive)); into(root) }
+        val extracted = root.resolve("vosk-model-small-pt-0.3")
+        val target = root.resolve("model-pt")
+        if (target.exists()) target.deleteRecursively()
+        check(extracted.isDirectory) { "O pacote Vosk não contém a pasta esperada." }
+        extracted.copyRecursively(target, overwrite = true)
+        extracted.deleteRecursively()
+        check(target.resolve("am/final.mdl").isFile) { "Modelo Vosk incompleto: am/final.mdl não encontrado." }
+    }
+}
 android {
     namespace = "com.bruce.assistant"
     compileSdk = 35
@@ -19,7 +43,9 @@ android {
     }
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    sourceSets.getByName("main").assets.srcDir(voskModelAssets)
 }
+tasks.named("preBuild").configure { dependsOn(downloadVoskModel) }
 kotlin { jvmToolchain(17) }
 
 dependencies {
