@@ -143,7 +143,7 @@ async def health():
      storage="error"
   except Exception:
    storage="error"
- return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Gemini" if settings.model_provider.lower()=="gemini" else "Anthropic" if settings.model_provider.lower()=="anthropic" else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+ return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.gemini_api_key if settings.model_provider.lower()=="gemini" else settings.anthropic_api_key if settings.model_provider.lower()=="anthropic" else settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Gemini" if settings.model_provider.lower()=="gemini" else "Anthropic" if settings.model_provider.lower()=="anthropic" else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 def offline_intent(text:str):
  normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
  normalized=normalized.replace("wi-fi","wifi")
@@ -201,7 +201,7 @@ async def chat(p:ChatRequest):
  configured=bool(settings.gemini_api_key) if provider=="gemini" else bool(settings.anthropic_api_key) if provider=="anthropic" else bool(settings.model_base_url)
  if not configured:
   tool,args,offline_answer=offline_intent(p.messages[-1].content)
-  if offline_answer is None: raise HTTPException(503,"API BRUCE ativa. Para conversa livre, configure BRUCE_MODEL_BASE_URL com um modelo alcançável pela nuvem. Comandos diretos do Android continuam disponíveis.")
+  if offline_answer is None: raise HTTPException(503,"API BRUCE ativa. Configure a chave do provedor selecionado (BRUCE_GEMINI_API_KEY para Gemini) no servidor para habilitar conversa livre. Comandos locais compatíveis continuam disponíveis.")
   now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
   with connect() as c:
    c.execute("INSERT OR IGNORE INTO conversations VALUES(?,?,?,?)",(cid,"Nova conversa",now,now))
@@ -422,4 +422,4 @@ def delete_memory(mid:int):
 @app.get("/v1/capabilities",dependencies=[Depends(auth)])
 def capabilities():
  with connect() as c:online=c.execute("SELECT COUNT(*) FROM devices WHERE last_seen>=?",(int(time.time())-settings.device_online_seconds,)).fetchone()[0]>0
- return {"assistant":"BRUCE","chat":bool(settings.anthropic_api_key or settings.model_base_url),"persistent_memory":True,"device_bridge":"queue_ready","android_connected":online,"tools":[x["function"]["name"] for x in TOOLS],"note":"A fila de comandos requer o aplicativo Android com o serviço de ponte ativo."}
+ return {"assistant":"BRUCE","chat":bool((settings.gemini_api_key if settings.model_provider.lower()=="gemini" else settings.anthropic_api_key if settings.model_provider.lower()=="anthropic" else settings.model_base_url)),"persistent_memory":True,"device_bridge":"queue_ready","android_connected":online,"tools":[x["function"]["name"] for x in TOOLS],"note":"A fila de comandos requer o aplicativo Android com o serviço de ponte ativo."}
