@@ -20,14 +20,14 @@ val downloadVoskModel by tasks.registering {
         val root = voskModelAssets.get().asFile
         root.mkdirs()
         copy { from(zipTree(archive)); into(root) }
+        val target = root.resolve("model-pt")
+        if (target.exists()) target.deleteRecursively()
         val modelFile = root.walkTopDown().firstOrNull { it.isFile && it.name == "final.mdl" }
         check(modelFile != null) {
             "Modelo Vosk incompleto. Arquivo final.mdl não encontrado. Conteúdo: " +
                 root.walkTopDown().take(40).joinToString { it.relativeTo(root).path }
         }
         val sourceModelRoot = modelFile!!.parentFile.parentFile
-        val target = root.resolve("model-pt")
-        if (target.exists()) target.deleteRecursively()
         sourceModelRoot.copyRecursively(target, overwrite = true)
         check(target.resolve("am/final.mdl").isFile) { "Modelo Vosk incompleto após extração: am/final.mdl não encontrado." }
     }
