@@ -10,7 +10,7 @@ type Message = { role: "user" | "assistant"; text: string };
 type Section = "Início" | "Rotina" | "Treinos" | "Estudos" | "Metas" | "Evolução";
 type Recognition = { lang:string; continuous:boolean; interimResults:boolean; onresult:((e:any)=>void)|null; onerror:((e:any)=>void)|null; onend:(()=>void)|null; start:()=>void; stop:()=>void };
 type SpeechWindow = Window & { SpeechRecognition?: new()=>Recognition; webkitSpeechRecognition?: new()=>Recognition };
-const API_DEFAULT = "https://bruce-personal-api-petersonjunior-8756s-projects.vercel.app";
+const API_DEFAULT = "https://bruce-personal-api-petersonjunior253-8756s-projects.vercel.app";
 const API_KEY = "bruce_api_url";
 const TOKEN_KEY = "bruce_api_token";
 const nav: {name:Section; icon:any; prompt:string}[] = [
