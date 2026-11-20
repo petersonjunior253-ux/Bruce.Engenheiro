@@ -42,6 +42,7 @@ def init_db():
   c.execute("CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY,title TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)")
   c.execute("CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT,conversation_id TEXT NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL,created_at INTEGER NOT NULL)")
   c.execute("CREATE TABLE IF NOT EXISTS memories(id INTEGER PRIMARY KEY AUTOINCREMENT,category TEXT NOT NULL,content TEXT NOT NULL,created_at INTEGER NOT NULL)")
+  c.execute("CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,category TEXT NOT NULL DEFAULT 'geral',due_at TEXT,notes TEXT,status TEXT NOT NULL DEFAULT 'pending',created_at INTEGER NOT NULL,completed_at INTEGER)")
   c.execute("CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,platform TEXT NOT NULL,last_seen INTEGER NOT NULL,metadata TEXT NOT NULL DEFAULT '{}')")
   c.execute("CREATE TABLE IF NOT EXISTS device_commands(id TEXT PRIMARY KEY,device_id TEXT NOT NULL,tool TEXT NOT NULL,args TEXT NOT NULL,status TEXT NOT NULL,created_at INTEGER NOT NULL,result TEXT)")
   c.execute("CREATE INDEX IF NOT EXISTS idx_messages ON messages(conversation_id,id)")
@@ -79,6 +80,10 @@ class ChatRequest(BaseModel):
  conversation_id:str|None=None;messages:list[Message]=Field(min_length=1,max_length=100)
 class MemoryRequest(BaseModel):
  category:str=Field(default="geral",max_length=60);content:str=Field(min_length=1,max_length=12000)
+class TaskRequest(BaseModel):
+ title:str=Field(min_length=1,max_length=240);category:str=Field(default="geral",max_length=60);due_at:str|None=None;notes:str=Field(default="",max_length=4000)
+class TaskUpdate(BaseModel):
+ status:Literal["pending","completed"]
 class DeviceRegistration(BaseModel):
  device_id:str=Field(min_length=6,max_length=100);name:str="BRUCE Android";platform:str="android";metadata:dict[str,Any]={}
 class CommandResult(BaseModel):
@@ -266,19 +271,54 @@ async def chat(p:ChatRequest):
   raise HTTPException(502,detail)
  except (httpx.HTTPError,KeyError,ValueError) as e:raise HTTPException(502,"Não foi possível consultar o modelo configurado.")
  queued=[]
- if calls and devices:
-  did=devices[0]["id"]
-  for call in calls:
-   fn=call.get("function",{});name=fn.get("name")
-   if name not in {x["function"]["name"] for x in TOOLS}:continue
-   try:args=json.loads(fn.get("arguments") or "{}")
-   except ValueError:args={}
+ local_results=[]
+ local_tools={"create_task","list_tasks","complete_task","save_memory","delete_memory"}
+ android_tools={x["function"]["name"] for x in TOOLS}-local_tools
+ for call in calls:
+  fn=call.get("function",{});name=fn.get("name")
+  try:args=json.loads(fn.get("arguments") or "{}")
+  except ValueError:args={}
+  if name in local_tools:
+   try:
+    with connect() as c:
+     if name=="create_task":
+      task_id=secrets.token_hex(8);title=str(args.get("title","")).strip()
+      if not title:raise ValueError("Informe o título da tarefa.")
+      due_at=str(args.get("due_at") or "").strip() or None
+      c.execute("INSERT INTO tasks(id,title,category,due_at,notes,status,created_at) VALUES(?,?,?,?,?,?,?)",(task_id,title,str(args.get("category") or "geral"),due_at,str(args.get("notes") or ""),"pending",now));c.commit()
+      local_results.append({"tool":name,"created":True,"task_id":task_id,"title":title,"due_at":due_at})
+     elif name=="list_tasks":
+      status=str(args.get("status") or "pending");category=str(args.get("category") or "").strip()
+      query="SELECT id,title,category,due_at,notes,status,created_at FROM tasks";clauses=[];params=[]
+      if status in {"pending","completed"}:clauses.append("status=?");params.append(status)
+      if category:clauses.append("category=?");params.append(category)
+      if clauses:query+=" WHERE "+" AND ".join(clauses)
+      query+=" ORDER BY CASE WHEN due_at IS NULL OR due_at='' THEN 1 ELSE 0 END,due_at,created_at DESC LIMIT 50"
+      local_results.append({"tool":name,"tasks":[dict(row) for row in c.execute(query,params).fetchall()]})
+     elif name=="complete_task":
+      task_id=str(args.get("task_id") or "").strip();title=str(args.get("title") or "").strip()
+      if task_id:cur=c.execute("UPDATE tasks SET status='completed',completed_at=? WHERE id=?",(now,task_id))
+      elif title:cur=c.execute("UPDATE tasks SET status='completed',completed_at=? WHERE id=(SELECT id FROM tasks WHERE title LIKE ? AND status='pending' ORDER BY created_at LIMIT 1)",(now,"%"+title+"%"))
+      else:raise ValueError("Informe o identificador ou título da tarefa.")
+      c.commit();local_results.append({"tool":name,"completed":bool(cur.rowcount),"matched":task_id or title})
+     elif name=="save_memory":
+      content=str(args.get("content") or "").strip()
+      if not content:raise ValueError("A memória está vazia.")
+      cur=c.execute("INSERT INTO memories(category,content,created_at) VALUES(?,?,?)",(str(args.get("category") or "geral"),content,now));c.commit()
+      local_results.append({"tool":name,"saved":True,"memory_id":cur.lastrowid})
+     elif name=="delete_memory":
+      memory_id=int(args.get("memory_id") or 0);cur=c.execute("DELETE FROM memories WHERE id=?",(memory_id,));c.commit()
+      local_results.append({"tool":name,"deleted":bool(cur.rowcount),"memory_id":memory_id})
+   except Exception as e:local_results.append({"tool":name,"error":str(e)})
+  elif name in android_tools:
+   if not devices:
+    local_results.append({"tool":name,"error":"O dispositivo Android não está conectado."})
+    continue
    command_id=secrets.token_hex(12)
-   with connect() as c:c.execute("INSERT INTO device_commands(id,device_id,tool,args,status,created_at) VALUES(?,?,?,?,?,?)",(command_id,did,name,json.dumps(args,ensure_ascii=False),"queued",now));c.commit()
+   with connect() as c:c.execute("INSERT INTO device_commands(id,device_id,tool,args,status,created_at) VALUES(?,?,?,?,?,?)",(command_id,devices[0]["id"],name,json.dumps(args,ensure_ascii=False),"queued",now));c.commit()
    queued.append({"id":command_id,"tool":name,"args":args})
-  if queued and not answer:answer="Recebi seu pedido e enviei a ação ao BRUCE no celular. Vou confirmar o resultado assim que o dispositivo responder."
- elif calls and not devices:
-  answer=(answer+"\n\nNo momento, seu Android não está conectado ao núcleo BRUCE.").strip()
+ if local_results:answer=(answer+"\n\nResultado das ações: "+json.dumps(local_results,ensure_ascii=False)).strip()
+ if queued and not answer:answer="Recebi seu pedido e enviei a ação ao BRUCE no celular. Vou confirmar o resultado assim que o dispositivo responder."
  if not answer:answer="Não recebi uma resposta válida do modelo."
  with connect() as c:c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,"assistant",answer,int(time.time())));c.commit()
  return {"conversation_id":cid,"message":answer,"model":settings.model_name,"model_provider":"Gemini" if provider=="gemini" else "Anthropic" if provider=="anthropic" else "OpenAI-compatible","queued_actions":queued}
@@ -328,6 +368,25 @@ def delete_conversation(cid:str):
  with connect() as c:c.execute("DELETE FROM messages WHERE conversation_id=?",(cid,));cur=c.execute("DELETE FROM conversations WHERE id=?",(cid,));c.commit()
  if not cur.rowcount:raise HTTPException(404,"Conversa não encontrada.")
  return {"deleted":True}
+@app.get("/v1/tasks",dependencies=[Depends(auth)])
+def list_tasks(status:str="pending",category:str|None=None):
+ query="SELECT id,title,category,due_at,notes,status,created_at,completed_at FROM tasks";clauses=[];params=[]
+ if status in {"pending","completed"}:clauses.append("status=?");params.append(status)
+ if category:clauses.append("category=?");params.append(category)
+ if clauses:query+=" WHERE "+" AND ".join(clauses)
+ query+=" ORDER BY CASE WHEN due_at IS NULL OR due_at='' THEN 1 ELSE 0 END,due_at,created_at DESC LIMIT 200"
+ with connect() as c:return [dict(x) for x in c.execute(query,params).fetchall()]
+@app.post("/v1/tasks",dependencies=[Depends(auth)])
+def add_task(p:TaskRequest):
+ task_id=secrets.token_hex(8);now=int(time.time())
+ with connect() as c:c.execute("INSERT INTO tasks(id,title,category,due_at,notes,status,created_at) VALUES(?,?,?,?,?,?,?)",(task_id,p.title,p.category,p.due_at,p.notes,"pending",now));c.commit()
+ return {"id":task_id,"created":True}
+@app.patch("/v1/tasks/{task_id}",dependencies=[Depends(auth)])
+def update_task(task_id:str,p:TaskUpdate):
+ with connect() as c:
+  cur=c.execute("UPDATE tasks SET status=?,completed_at=? WHERE id=?",(p.status,int(time.time()) if p.status=="completed" else None,task_id));c.commit()
+ if not cur.rowcount:raise HTTPException(404,"Tarefa não encontrada.")
+ return {"updated":True,"id":task_id,"status":p.status}
 @app.get("/v1/memories",dependencies=[Depends(auth)])
 def memories():
  with connect() as c:return [dict(x) for x in c.execute("SELECT id,category,content,created_at FROM memories ORDER BY id DESC LIMIT 100")]
