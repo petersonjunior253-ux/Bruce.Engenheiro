@@ -13,6 +13,7 @@ type SpeechWindow = Window & { SpeechRecognition?: new()=>Recognition; webkitSpe
 const API_DEFAULT = "https://bruce-personal-api-petersonjunior253-8756s-projects.vercel.app";
 const API_KEY = "bruce_api_url";
 const TOKEN_KEY = "bruce_api_token";
+const todayLocal = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const nav: {name:Section; icon:any; prompt:string}[] = [
   {name:"Início",icon:Home,prompt:"Vamos organizar minhas prioridades de hoje."},
   {name:"Rotina",icon:CalendarDays,prompt:"Ajude-me a organizar minha rotina de hoje e os próximos dias."},
@@ -34,6 +35,7 @@ export default function App() {
   const [busy,setBusy]=useState(false),[listening,setListening]=useState(false),[speaking,setSpeaking]=useState(false);
   const [connected,setConnected]=useState(false),[model,setModel]=useState("Gemini 3.8 Flash");
   const [deviceOnline,setDeviceOnline]=useState(false),[tasks,setTasks]=useState<any[]>([]),[error,setError]=useState("");
+  const [taskModal,setTaskModal]=useState(false),[taskTitle,setTaskTitle]=useState(""),[taskCategory,setTaskCategory]=useState("pessoal"),[taskDate,setTaskDate]=useState(todayLocal),[taskTime,setTaskTime]=useState(""),[taskNotes,setTaskNotes]=useState(""),[savingTask,setSavingTask]=useState(false);
   const listRef=useRef<HTMLDivElement>(null),recognition=useRef<Recognition|null>(null);
 
   const request=useCallback(async(path:string,init:RequestInit={})=>{
@@ -129,6 +131,19 @@ export default function App() {
     localStorage.setItem(API_KEY,url);sessionStorage.setItem(TOKEN_KEY,key);
     setApiUrl(url);setToken(key);setSettings(false);
   };
+  const saveTask=async(e:React.FormEvent)=>{
+    e.preventDefault();
+    if(!taskTitle.trim()){setError("Dê um nome para a atividade.");return;}
+    if(!taskDate){setError("Escolha o dia da atividade.");return;}
+    setSavingTask(true);setError("");
+    try{
+      const due_at=taskTime?taskDate+"T"+taskTime:taskDate;
+      await request("/v1/tasks",{method:"POST",body:JSON.stringify({title:taskTitle.trim(),category:taskCategory,due_at,notes:taskNotes.trim()})});
+      await refreshStatus();
+      setTaskModal(false);setTaskTitle("");setTaskCategory("pessoal");setTaskDate(todayLocal());setTaskTime("");setTaskNotes("");
+    }catch(e){setError(e instanceof Error?e.message:"Não foi possível salvar a atividade.");}
+    finally{setSavingTask(false);}
+  };
   const quick=(prompt:string)=>{setSection("Início");void send(prompt);};
 
   return <main className="app-shell">
@@ -194,7 +209,7 @@ export default function App() {
             <button className="card-link" onClick={()=>{setDraftUrl(apiUrl);setDraftToken(token);setSettings(true);}}>Configurar sistema <ChevronRight size={15}/></button>
           </section>
 
-          <section className="rail-card"><div className="card-title"><div><span className="card-kicker">ORGANIZAÇÃO</span><h3>Próximas atividades</h3></div><CalendarDays size={18}/></div>
+          <section className="rail-card"><div className="card-title"><div><span className="card-kicker">ORGANIZAÇÃO</span><h3>Próximas atividades</h3></div><button className="task-add" onClick={()=>{setTaskDate(todayLocal());setTaskTime("");setTaskModal(true);}}><Plus size={14}/> Adicionar</button></div>
             {tasks.length>0?<div className="task-list">{tasks.slice(0,5).map(task=><div className="task-row" key={task.id}><button className="task-check" title="Concluir tarefa" onClick={async()=>{try{await request("/v1/tasks/"+encodeURIComponent(task.id),{method:"PATCH",body:JSON.stringify({status:"completed"})});await refreshStatus();}catch(e){setError(e instanceof Error?e.message:"Não foi possível concluir a tarefa.");}}}><CheckCircle2 size={15}/></button><div><b>{task.title}</b><small>{task.category}{task.due_at?" · "+task.due_at.replace("T"," "):""}</small></div></div>)}<button className="card-link" onClick={()=>quick("Bruce, mostre todas as minhas tarefas pendentes.")}>Ver todas as tarefas <ChevronRight size={14}/></button></div>:<div className="empty-activities"><div className="empty-icon"><CalendarDays size={20}/></div><p>Vamos preencher sua agenda juntos.</p><small>Peça ao BRUCE para planejar sua rotina e organizar seus compromissos.</small><button onClick={()=>quick("Bruce, me ajude a montar minha rotina semanal.")}>Planejar rotina <ChevronRight size={14}/></button></div>}
           </section>
 
@@ -209,6 +224,16 @@ export default function App() {
       <footer className="workspace-footer"><span>PROTOCOLO BRUCE WAYNE</span><span>INTELIGÊNCIA PESSOAL · VOZ · AUTOMAÇÃO</span><span className={connected?"footer-online":"footer-offline"}>{connected?"● NÚCLEO ONLINE":"● CONEXÃO PENDENTE"}</span></footer>
     </section>
 
+    {taskModal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setTaskModal(false);}}><form className="settings-modal task-modal" onSubmit={saveTask}>
+      <div className="modal-heading"><div><span className="card-kicker">AGENDA PESSOAL</span><h2>Adicionar atividade</h2></div><button type="button" onClick={()=>setTaskModal(false)} aria-label="Fechar"><X/></button></div>
+      <p>Crie um compromisso único para qualquer dia e horário. Você também pode deixar sem horário definido.</p>
+      <label>O QUE VOCÊ VAI FAZER<input autoFocus value={taskTitle} onChange={e=>setTaskTitle(e.target.value)} placeholder="Ex.: Estudar matemática" maxLength={240}/></label>
+      <div className="task-fields"><label>DATA<input type="date" value={taskDate} onChange={e=>setTaskDate(e.target.value)} required/></label><label>HORÁRIO<input type="time" value={taskTime} onChange={e=>setTaskTime(e.target.value)}/></label></div>
+      <label>CATEGORIA<select value={taskCategory} onChange={e=>setTaskCategory(e.target.value)}><option value="pessoal">Pessoal</option><option value="rotina">Rotina</option><option value="estudos">Estudos</option><option value="treino">Treino</option><option value="trabalho">Trabalho</option><option value="saude">Saúde</option><option value="geral">Geral</option></select></label>
+      <label>OBSERVAÇÕES (OPCIONAL)<input value={taskNotes} onChange={e=>setTaskNotes(e.target.value)} placeholder="Detalhes ou lembretes"/></label>
+      <div className="secure-hint"><CalendarDays size={15}/> Atividade única · {taskTime?"às "+taskTime:"sem horário definido"}</div>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={()=>setTaskModal(false)}>Cancelar</button><button type="submit" className="primary" disabled={savingTask}>{savingTask?"Salvando...":"Salvar atividade"}</button></div>
+    </form></div>}
     {settings&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setSettings(false);}}><section className="settings-modal"><div className="modal-heading"><div><span className="card-kicker">CONFIGURAÇÃO DO NÚCLEO</span><h2>Conexão privada</h2></div><button onClick={()=>setSettings(false)}><X/></button></div><p>Informe o endereço da API BRUCE e o token privado do dispositivo. A chave do Gemini deve permanecer configurada apenas no servidor.</p><label>URL DA API<input value={draftUrl} onChange={e=>setDraftUrl(e.target.value)} placeholder="https://sua-api.vercel.app"/></label><label>TOKEN PRIVADO<input type="password" value={draftToken} onChange={e=>setDraftToken(e.target.value)} placeholder="Token privado do dispositivo"/></label><div className="secure-hint"><ShieldCheck size={16}/> Nunca cole aqui sua chave do Google Gemini.</div><div className="modal-actions"><button className="secondary" onClick={()=>{localStorage.removeItem(API_KEY);sessionStorage.removeItem(TOKEN_KEY);setToken("");setSettings(false);}}>Desconectar</button><button className="primary" onClick={saveSettings}>Salvar conexão</button></div></section></div>}
     {error&&<div className="toast-error">{error}<button onClick={()=>setError("")}><X size={14}/></button></div>}
   </main>;
