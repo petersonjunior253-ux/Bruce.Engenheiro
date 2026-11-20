@@ -19,9 +19,10 @@ class Settings(BaseSettings):
  model_base_url:str=os.getenv("BRUCE_MODEL_BASE_URL", "" if os.getenv("VERCEL") else "http://127.0.0.1:11434/v1")
  model_api_key:str=""
  anthropic_api_key:str=""
- model_provider:str="anthropic"
- model_name:str="claude-sonnet-5-5"
- system_prompt:str="Você é BRUCE, assistente pessoal privado do usuário. Responda em português brasileiro, seja inteligente, direto, natural e proativo. Nunca afirme que executou algo sem confirmação do dispositivo. Para ações críticas, peça autorização explícita. Use ferramentas reais quando disponíveis."
+ gemini_api_key:str=""
+ model_provider:str="gemini"
+ model_name:str="gemini-3.8-flash"
+ system_prompt:str="Você é BRUCE, um assistente pessoal completo, natural e proativo, com experiência conversacional no nível dos melhores assistentes Gemini. Fale sempre em português brasileiro, com voz humana, calorosa, inteligente e objetiva. Entenda linguagem cotidiana, contexto implícito, pedidos incompletos e referências anteriores. Ajude a planejar e acompanhar rotina, estudos, treino, metas, projetos e organização pessoal. Faça perguntas curtas apenas quando faltar uma informação essencial. Antecipe conflitos de agenda e ofereça próximos passos úteis sem ser insistente. Use memória para personalizar respostas, mas nunca invente lembranças. Você pode usar ferramentas para executar ações reais no Android; só diga que algo foi feito quando receber confirmação do dispositivo. Ações sensíveis, financeiras, externas, irreversíveis ou que exponham dados exigem aprovação explícita. Respeite a privacidade e não misture dados de pessoas diferentes."
  max_context_messages:int=80
  max_output_tokens:int=4096
  database_path:str=os.getenv("BRUCE_DATABASE_PATH", "/tmp/bruce.sqlite3" if os.getenv("VERCEL") else "./data/bruce.sqlite3")
@@ -137,7 +138,7 @@ async def health():
      storage="error"
   except Exception:
    storage="error"
- return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Anthropic" if settings.model_provider.lower()=="anthropic" else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
+ return {"status":"ok" if storage!="error" else "degraded","service":"BRUCE Personal Intelligence API","model_configured":bool((settings.anthropic_api_key or settings.model_base_url) and settings.model_name),"persistent_storage":storage,"model_name":settings.model_name,"model_provider":"Gemini" if settings.model_provider.lower()=="gemini" else "Anthropic" if settings.model_provider.lower()=="anthropic" else "OpenAI-compatible","database":"sqlite","device_tools":True,"time":int(time.time())}
 def offline_intent(text:str):
  normalized=unicodedata.normalize("NFD",text).encode("ascii","ignore").decode("ascii").lower()
  normalized=normalized.replace("wi-fi","wifi")
@@ -191,7 +192,9 @@ def offline_intent(text:str):
 
 @app.post("/v1/chat",dependencies=[Depends(auth)])
 async def chat(p:ChatRequest):
- if not (settings.anthropic_api_key or settings.model_base_url):
+ provider=settings.model_provider.lower().strip()
+ configured=bool(settings.gemini_api_key) if provider=="gemini" else bool(settings.anthropic_api_key) if provider=="anthropic" else bool(settings.model_base_url)
+ if not configured:
   tool,args,offline_answer=offline_intent(p.messages[-1].content)
   if offline_answer is None: raise HTTPException(503,"API BRUCE ativa. Para conversa livre, configure BRUCE_MODEL_BASE_URL com um modelo alcançável pela nuvem. Comandos diretos do Android continuam disponíveis.")
   now=int(time.time());cid=p.conversation_id or secrets.token_hex(12)
@@ -231,7 +234,19 @@ async def chat(p:ChatRequest):
  calls=[]
  try:
   async with httpx.AsyncClient(timeout=httpx.Timeout(150,connect=15)) as client:
-   if settings.anthropic_api_key:
+   if provider=="gemini" and settings.gemini_api_key:
+    gemini_tools=[{"name":x["function"]["name"],"description":x["function"]["description"],"parameters":{k:(v.upper() if k=="type" and isinstance(v,str) else {kk:(vv.upper() if kk=="type" and isinstance(vv,str) else vv) for kk,vv in v.items()} if k=="properties" and isinstance(v,dict) else v) for k,v in x["function"]["parameters"].items()}} for x in TOOLS]
+    gemini_contents=[]
+    for item in messages:
+     if item["role"]=="system":continue
+     gemini_contents.append({"role":"model" if item["role"]=="assistant" else "user","parts":[{"text":item["content"]}]})
+    body={"systemInstruction":{"parts":[{"text":context}]},"contents":gemini_contents,"generationConfig":{"maxOutputTokens":settings.max_output_tokens,"temperature":0.7},"tools":[{"functionDeclarations":gemini_tools}]}
+    headers={"Content-Type":"application/json","x-goog-api-key":settings.gemini_api_key}
+    r=await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{settings.model_name}:generateContent",headers=headers,json=body);r.raise_for_status();data=r.json()
+    parts=data.get("candidates",[{}])[0].get("content",{}).get("parts",[])
+    answer="\\n".join(x.get("text","") for x in parts if x.get("text")).strip()
+    calls=[{"function":{"name":x.get("functionCall",{}).get("name"),"arguments":json.dumps(x.get("functionCall",{}).get("args",{}),ensure_ascii=False)}} for x in parts if x.get("functionCall")]
+   elif provider=="anthropic" and settings.anthropic_api_key:
     anthropic_tools=[{"name":x["function"]["name"],"description":x["function"]["description"],"input_schema":x["function"]["parameters"]} for x in TOOLS]
     anthropic_messages=[{"role":x["role"],"content":x["content"]} for x in messages if x["role"]!="system"]
     body={"model":settings.model_name,"system":context,"messages":anthropic_messages,"max_tokens":settings.max_output_tokens,"tools":anthropic_tools}
@@ -247,7 +262,7 @@ async def chat(p:ChatRequest):
     r=await client.post(settings.model_base_url.rstrip("/")+"/chat/completions",headers=headers,json=body);r.raise_for_status();data=r.json()
     choice=data["choices"][0]["message"];answer=choice.get("content") or "";calls=choice.get("tool_calls") or []
  except httpx.HTTPStatusError as e:
-  detail="A chave Anthropic foi recusada. Confira BRUCE_ANTHROPIC_API_KEY e os créditos da conta." if settings.anthropic_api_key and e.response.status_code in (401,403) else f"Provedor de IA retornou HTTP {e.response.status_code}."
+  detail=("A chave Gemini foi recusada. Confira BRUCE_GEMINI_API_KEY no servidor." if provider=="gemini" and e.response.status_code in (401,403) else "A chave Anthropic foi recusada. Confira BRUCE_ANTHROPIC_API_KEY e os créditos da conta." if provider=="anthropic" and e.response.status_code in (401,403) else f"Provedor de IA retornou HTTP {e.response.status_code}.")
   raise HTTPException(502,detail)
  except (httpx.HTTPError,KeyError,ValueError) as e:raise HTTPException(502,"Não foi possível consultar o modelo configurado.")
  queued=[]
@@ -266,7 +281,7 @@ async def chat(p:ChatRequest):
   answer=(answer+"\n\nNo momento, seu Android não está conectado ao núcleo BRUCE.").strip()
  if not answer:answer="Não recebi uma resposta válida do modelo."
  with connect() as c:c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,"assistant",answer,int(time.time())));c.commit()
- return {"conversation_id":cid,"message":answer,"model":settings.model_name,"model_provider":"Anthropic" if settings.anthropic_api_key else "OpenAI-compatible","queued_actions":queued}
+ return {"conversation_id":cid,"message":answer,"model":settings.model_name,"model_provider":"Gemini" if provider=="gemini" else "Anthropic" if provider=="anthropic" else "OpenAI-compatible","queued_actions":queued}
 @app.post("/v1/device/register",dependencies=[Depends(auth)])
 def register_device(p:DeviceRegistration):
  with connect() as c:c.execute("INSERT INTO devices(id,name,platform,last_seen,metadata) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,platform=excluded.platform,last_seen=excluded.last_seen,metadata=excluded.metadata",(p.device_id,p.name,p.platform,int(time.time()),json.dumps(p.metadata)));c.commit()
