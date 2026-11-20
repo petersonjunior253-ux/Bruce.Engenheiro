@@ -33,7 +33,7 @@ export default function App() {
   const [conversationId,setConversationId]=useState<string|null>(null);
   const [busy,setBusy]=useState(false),[listening,setListening]=useState(false),[speaking,setSpeaking]=useState(false);
   const [connected,setConnected]=useState(false),[model,setModel]=useState("Gemini 3.8 Flash");
-  const [deviceOnline,setDeviceOnline]=useState(false),[error,setError]=useState("");
+  const [deviceOnline,setDeviceOnline]=useState(false),[tasks,setTasks]=useState<any[]>([]),[error,setError]=useState("");
   const listRef=useRef<HTMLDivElement>(null),recognition=useRef<Recognition|null>(null);
 
   const request=useCallback(async(path:string,init:RequestInit={})=>{
@@ -49,12 +49,14 @@ export default function App() {
       const response=await fetch(apiUrl.replace(/\/$/,"")+"/health");
       if(!response.ok)throw Error();
       const data=await response.json();
-      setConnected(true);
-      setModel(data.model_provider==="Gemini"?(data.model_name||"Gemini"):"Gemini · aguardando configuração");
+      setConnected(Boolean(data.model_configured));
+      setModel(data.model_provider==="Gemini"?(data.model_configured?(data.model_name||"Gemini"):"Gemini · chave pendente"):"Gemini · aguardando configuração");
     } catch {setConnected(false);}
     if(token){
       try {const devices=await request("/v1/device/status");setDeviceOnline(Array.isArray(devices)&&devices.some((d:any)=>d.online));}
       catch {setDeviceOnline(false);}
+      try {const rows=await request("/v1/tasks?status=pending");setTasks(Array.isArray(rows)?rows:[]);}
+      catch {setTasks([]);}
     } else setDeviceOnline(false);
   },[apiUrl,token,request]);
 
@@ -192,7 +194,7 @@ export default function App() {
           </section>
 
           <section className="rail-card"><div className="card-title"><div><span className="card-kicker">ORGANIZAÇÃO</span><h3>Próximas atividades</h3></div><CalendarDays size={18}/></div>
-            <div className="empty-activities"><div className="empty-icon"><CalendarDays size={20}/></div><p>Vamos preencher sua agenda juntos.</p><small>Peça ao BRUCE para planejar sua rotina e organizar seus compromissos.</small><button onClick={()=>quick("Bruce, me ajude a montar minha rotina semanal.")}>Planejar rotina <ChevronRight size={14}/></button></div>
+            {tasks.length>0?<div className="task-list">{tasks.slice(0,5).map(task=><div className="task-row" key={task.id}><button className="task-check" title="Concluir tarefa" onClick={async()=>{try{await request("/v1/tasks/"+encodeURIComponent(task.id),{method:"PATCH",body:JSON.stringify({status:"completed"})});await refreshStatus();}catch(e){setError(e instanceof Error?e.message:"Não foi possível concluir a tarefa.");}}}><CheckCircle2 size={15}/></button><div><b>{task.title}</b><small>{task.category}{task.due_at?" · "+task.due_at.replace("T"," "):""}</small></div></div>)}<button className="card-link" onClick={()=>quick("Bruce, mostre todas as minhas tarefas pendentes.")}>Ver todas as tarefas <ChevronRight size={14}/></button></div>:<div className="empty-activities"><div className="empty-icon"><CalendarDays size={20}/></div><p>Vamos preencher sua agenda juntos.</p><small>Peça ao BRUCE para planejar sua rotina e organizar seus compromissos.</small><button onClick={()=>quick("Bruce, me ajude a montar minha rotina semanal.")}>Planejar rotina <ChevronRight size={14}/></button></div>}
           </section>
 
           <section className="rail-card memory-card"><div className="card-title"><div><span className="card-kicker">CONTEXTO CONTÍNUO</span><h3>Memória e evolução</h3></div><Brain size={18}/></div>
