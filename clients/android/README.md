@@ -1,13 +1,12 @@
-# BRUCE Android client — implementation plan
+# Legacy Android client
 
-The Android client must be a native Kotlin application, not a webpage pretending to listen in the background.
+This directory is a legacy prototype and is not the active BRUCE APK build target.
 
-Required implementation:
-- Android foreground service with a persistent notification while microphone monitoring is active.
-- On-device custom BRUCE wake-word model and explicit microphone permission.
-- User-visible start/stop controls and clear recording indicator.
-- Audio capture begins only after local wake detection; no always-on audio upload.
-- Android 14+ microphone foreground-service declarations and permission flow.
-- Optional assistant-role integration through VoiceInteractionService, subject to Android default-assistant selection and device support.
+The active native Android application lives in the repository root at `app/` (package `com.bruce.assistant`). GitHub Actions builds that project with the root Gradle settings.
 
-This directory intentionally does not claim a working Android listener yet. A tested custom model and native APK build are required before activation can be considered operational.
+The active app includes:
+- Vosk Portuguese wake-word recognition using the bundled `vosk-model-small-pt-0.3` model.
+- A user-started foreground microphone service with a persistent notification.
+- Android command bridge, notification listener, accessibility service, and file tools.
+
+Do not build or distribute an APK from this legacy directory.
