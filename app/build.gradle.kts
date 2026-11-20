@@ -1,3 +1,5 @@
+import java.net.URL
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,7 +13,7 @@ val downloadVoskModel by tasks.registering {
         val archive = archiveFile.get().asFile
         if (!archive.exists()) {
             archive.parentFile.mkdirs()
-            java.net.URL("https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip").openStream().use { input ->
+            URL("https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip").openStream().use { input ->
                 archive.outputStream().use { output -> input.copyTo(output) }
             }
         }
