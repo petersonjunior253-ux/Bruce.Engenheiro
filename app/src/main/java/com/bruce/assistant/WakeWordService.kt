@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.provider.AlarmClock
@@ -22,6 +23,7 @@ import java.io.File
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -44,6 +46,7 @@ class WakeWordService : Service(), RecognitionListener {
     private var tts: TextToSpeech? = null
     private var neuralPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var ttsReady = false
     private var awaitingCommand = false
     private var commandHandled = false
     private var lastWakeAt = 0L
@@ -65,11 +68,12 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIFICATION_ID, notification("Preparando reconhecimento offline"))
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Preparando reconhecimento offline"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         val power = getSystemService(PowerManager::class.java)
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "BRUCE:WakeWord").also { it.acquire() }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
+                ttsReady = true
                 tts?.language = Locale("pt", "BR")
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(id: String?) {}
@@ -357,8 +361,13 @@ class WakeWordService : Service(), RecognitionListener {
         awaitingCommand = true
         commandHandled = false
         stopSpeech()
-        tts?.speak("Estou aqui. Pode falar.", TextToSpeech.QUEUE_FLUSH, null, "bruce-prompt")
         updateNotification("BRUCE foi chamado. Pode falar.")
+        if (ttsReady && tts != null) {
+            val result = tts?.speak("Estou aqui. Pode falar.", TextToSpeech.QUEUE_FLUSH, null, "bruce-prompt")
+            if (result == TextToSpeech.ERROR) mainHandler.post { startCommandRecognition() }
+        } else {
+            mainHandler.postDelayed({ if (awaitingCommand) startCommandRecognition() }, 250)
+        }
     }
 
     private fun handleCommand(command: String) {
@@ -489,8 +498,9 @@ class WakeWordService : Service(), RecognitionListener {
         awaitingCommand = false
         stopSpeech()
         val engine = tts
-        if (engine != null) {
-            engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "bruce-answer")
+        if (engine != null && ttsReady) {
+            val result = engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, "bruce-answer")
+            if (result == TextToSpeech.ERROR) mainHandler.postDelayed({ startWakeRecognition() }, 1500)
         } else {
             mainHandler.postDelayed({ startWakeRecognition() }, 1500)
         }
