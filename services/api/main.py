@@ -22,7 +22,7 @@ class Settings(BaseSettings):
  gemini_api_key:str=""
  model_provider:str="gemini"
  model_name:str="gemini-3.8-flash"
- system_prompt:str="Você é BRUCE, um assistente pessoal completo, natural e proativo, com experiência conversacional no nível dos melhores assistentes Gemini. Fale sempre em português brasileiro, com voz humana, calorosa, inteligente e objetiva. Entenda linguagem cotidiana, contexto implícito, pedidos incompletos e referências anteriores. Ajude a planejar e acompanhar rotina, estudos, treino, metas, projetos e organização pessoal. Faça perguntas curtas apenas quando faltar uma informação essencial. Antecipe conflitos de agenda e ofereça próximos passos úteis sem ser insistente. Use memória para personalizar respostas, mas nunca invente lembranças. Você pode usar ferramentas para executar ações reais no Android; só diga que algo foi feito quando receber confirmação do dispositivo. Ações sensíveis, financeiras, externas, irreversíveis ou que exponham dados exigem aprovação explícita. Respeite a privacidade e não misture dados de pessoas diferentes."
+ system_prompt:str="Você é BRUCE, um assistente pessoal completo, natural e proativo, com experiência conversacional no nível dos melhores assistentes Gemini. Fale sempre em português brasileiro, com voz humana, calorosa, inteligente e objetiva. Entenda linguagem cotidiana, contexto implícito, pedidos incompletos e referências anteriores. Ajude a planejar e acompanhar rotina, estudos, treino, metas, projetos e organização pessoal. Faça perguntas curtas apenas quando faltar uma informação essencial. Antecipe conflitos de agenda e ofereça próximos passos úteis sem ser insistente. Use memória para personalizar respostas, mas nunca invente lembranças. Use as ferramentas de tarefas e memória para registrar compromissos, consultar pendências, concluir tarefas e guardar informações que o usuário pedir explicitamente para lembrar. Converta datas relativas usando o fuso America/Sao_Paulo e confirme com o usuário quando faltar horário. Você também pode usar ferramentas para executar ações reais no Android; só diga que algo foi feito quando receber confirmação do dispositivo. Ações sensíveis, financeiras, externas, irreversíveis ou que exponham dados exigem aprovação explícita. Respeite a privacidade e não misture dados de pessoas diferentes."
  max_context_messages:int=80
  max_output_tokens:int=4096
  database_path:str=os.getenv("BRUCE_DATABASE_PATH", "/tmp/bruce.sqlite3" if os.getenv("VERCEL") else "./data/bruce.sqlite3")
@@ -272,7 +272,7 @@ async def chat(p:ChatRequest):
  except (httpx.HTTPError,KeyError,ValueError) as e:raise HTTPException(502,"Não foi possível consultar o modelo configurado.")
  queued=[]
  local_results=[]
- local_tools={"create_task","list_tasks","complete_task","save_memory","delete_memory"}
+ local_tools={"create_task","list_tasks","complete_task","save_memory","list_memories","delete_memory"}
  android_tools={x["function"]["name"] for x in TOOLS}-local_tools
  for call in calls:
   fn=call.get("function",{});name=fn.get("name")
@@ -306,6 +306,11 @@ async def chat(p:ChatRequest):
       if not content:raise ValueError("A memória está vazia.")
       cur=c.execute("INSERT INTO memories(category,content,created_at) VALUES(?,?,?)",(str(args.get("category") or "geral"),content,now));c.commit()
       local_results.append({"tool":name,"saved":True,"memory_id":cur.lastrowid})
+     elif name=="list_memories":
+      category=str(args.get("category") or "").strip()
+      if category:rows=c.execute("SELECT id,category,content,created_at FROM memories WHERE category=? ORDER BY id DESC LIMIT 50",(category,)).fetchall()
+      else:rows=c.execute("SELECT id,category,content,created_at FROM memories ORDER BY id DESC LIMIT 50").fetchall()
+      local_results.append({"tool":name,"memories":[dict(row) for row in rows]})
      elif name=="delete_memory":
       memory_id=int(args.get("memory_id") or 0);cur=c.execute("DELETE FROM memories WHERE id=?",(memory_id,));c.commit()
       local_results.append({"tool":name,"deleted":bool(cur.rowcount),"memory_id":memory_id})
@@ -317,7 +322,22 @@ async def chat(p:ChatRequest):
    command_id=secrets.token_hex(12)
    with connect() as c:c.execute("INSERT INTO device_commands(id,device_id,tool,args,status,created_at) VALUES(?,?,?,?,?,?)",(command_id,devices[0]["id"],name,json.dumps(args,ensure_ascii=False),"queued",now));c.commit()
    queued.append({"id":command_id,"tool":name,"args":args})
- if local_results:answer=(answer+"\n\nResultado das ações: "+json.dumps(local_results,ensure_ascii=False)).strip()
+ if local_results:
+  lines=[]
+  for item in local_results:
+   name=item.get("tool")
+   if item.get("error"):lines.append("Não consegui concluir "+str(name)+": "+str(item["error"]))
+   elif name=="create_task":lines.append("Anotei na sua rotina: "+str(item.get("title"))+".")
+   elif name=="list_tasks":
+    tasks=item.get("tasks",[])
+    lines.append("Você tem "+str(len(tasks))+" tarefa(s) pendente(s): "+("; ".join(str(x.get("title")) for x in tasks) if tasks else "nenhuma tarefa pendente")+".")
+   elif name=="complete_task":lines.append("Tarefa marcada como concluída." if item.get("completed") else "Não encontrei essa tarefa para concluir.")
+   elif name=="save_memory":lines.append("Guardei essa informação na sua memória pessoal.")
+   elif name=="list_memories":
+    memories=item.get("memories",[])
+    lines.append("Memórias encontradas: "+("; ".join(str(x.get("id"))+": "+str(x.get("content")) for x in memories) if memories else "nenhuma memória salva")+".")
+   elif name=="delete_memory":lines.append("Memória apagada." if item.get("deleted") else "Não encontrei essa memória.")
+  if lines:answer=(answer+"\n\n"+"\n".join(lines)).strip()
  if queued and not answer:answer="Recebi seu pedido e enviei a ação ao BRUCE no celular. Vou confirmar o resultado assim que o dispositivo responder."
  if not answer:answer="Não recebi uma resposta válida do modelo."
  with connect() as c:c.execute("INSERT INTO messages(conversation_id,role,content,created_at) VALUES(?,?,?,?)",(cid,"assistant",answer,int(time.time())));c.commit()
