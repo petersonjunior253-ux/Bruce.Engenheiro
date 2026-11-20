@@ -336,7 +336,10 @@ async def chat(p:ChatRequest):
   for item in local_results:
    name=item.get("tool")
    if item.get("error"):lines.append("Não consegui concluir "+str(name)+": "+str(item["error"]))
-   elif name=="create_task":\n    due=str(item.get("due_at") or "")\n    when=(" para "+datetime.strptime(due[:16],"%Y-%m-%dT%H:%M").strftime("%d/%m/%Y às %H:%M") if len(due)>=16 and "T" in due else (" para "+datetime.strptime(due[:10],"%Y-%m-%d").strftime("%d/%m/%Y") if len(due)>=10 else ""))\n    lines.append("Anotei na sua agenda: "+str(item.get("title"))+when+". É um compromisso único.")
+   elif name=="create_task":
+    due=str(item.get("due_at") or "")
+    when=(" para "+datetime.strptime(due[:16],"%Y-%m-%dT%H:%M").strftime("%d/%m/%Y às %H:%M") if len(due)>=16 and "T" in due else (" para "+datetime.strptime(due[:10],"%Y-%m-%d").strftime("%d/%m/%Y") if len(due)>=10 else ""))
+    lines.append("Anotei na sua agenda: "+str(item.get("title"))+when+". É um compromisso único.")
    elif name=="list_tasks":
     tasks=item.get("tasks",[])
     lines.append("Você tem "+str(len(tasks))+" tarefa(s) pendente(s): "+("; ".join(str(x.get("title")) for x in tasks) if tasks else "nenhuma tarefa pendente")+".")
