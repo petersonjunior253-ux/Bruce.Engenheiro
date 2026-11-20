@@ -21,12 +21,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Download offline Portuguese wake-word model
-        run: |
-          mkdir -p app/src/main/assets
-          curl -L --fail --retry 3 https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip -o /tmp/vosk-model.zip
-          unzip -q /tmp/vosk-model.zip -d /tmp/vosk
-          mv /tmp/vosk/vosk-model-small-pt-0.3 app/src/main/assets/model-pt
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
