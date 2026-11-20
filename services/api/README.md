@@ -1,6 +1,6 @@
 # BRUCE API
 
-API privada do assistente BRUCE, construída em FastAPI. Não usa a API do ChatGPT. O motor de linguagem é um endpoint OpenAI-compatible configurável, como Ollama ou outro servidor de inferência.
+API privada do assistente BRUCE, construída em FastAPI. O motor principal é Google Gemini via API oficial, com suporte alternativo a Anthropic e servidores OpenAI-compatible, como Ollama. A chave do modelo permanece exclusivamente no servidor.
 
 ## API hospedada
 
@@ -36,7 +36,9 @@ Rotas privadas exigem `Authorization: Bearer SEU_TOKEN`.
 ## Inferência própria
 
 - Ollama local: `BRUCE_MODEL_BASE_URL=http://127.0.0.1:11434/v1`, `BRUCE_MODEL_NAME=llama3.2`; chave vazia.
-- Outro servidor compatível: URL base, nome exato do modelo e chave apenas no servidor.
+- Gemini: `BRUCE_MODEL_PROVIDER=gemini`, `BRUCE_GEMINI_API_KEY` e `BRUCE_MODEL_NAME=gemini-3.8-flash`.
+- Anthropic: `BRUCE_MODEL_PROVIDER=anthropic`, `BRUCE_ANTHROPIC_API_KEY` e o nome do modelo configurado.
+- Outro servidor compatível: `BRUCE_MODEL_PROVIDER=openai-compatible`, URL base, nome exato do modelo e chave apenas no servidor.
 - Nunca coloque chave de provedor no Android, navegador, repositório ou logs.
 - Para conectar Ollama local à API hospedada, será necessário expor o endpoint com um túnel privado seguro ou hospedar API e modelo na mesma rede.
 
@@ -79,6 +81,6 @@ O Android não permite conceder essas permissões silenciosamente por uma API ex
 
 - O serviço de escuta offline Vosk está incluído no APK, mas a detecção precisa de validação física no Samsung.
 - Voz neural usa Edge TTS online; offline, o app recorre ao mecanismo TTS do Android.
-- O endpoint de modelo ainda não está configurado na hospedagem.
+- A hospedagem precisa receber `BRUCE_GEMINI_API_KEY` como variável secreta para habilitar a conversa Gemini.
 - A persistência Blob+SQLite é para uso pessoal inicial; antes de multiusuário ou alto volume, migrar para Postgres e autenticação por dispositivo.
 - Não existe controle irrestrito de todo o Android: algumas telas, apps bancários e áreas protegidas bloqueiam automação por segurança do sistema.
