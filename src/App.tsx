@@ -30,7 +30,7 @@ export default function App() {
   const [settings,setSettings]=useState(false),[sidebarOpen,setSidebarOpen]=useState(false);
   const [messages,setMessages]=useState<Message[]>([]);
   const [input,setInput]=useState("");
-  const [conversationId,setConversationId]=useState<string|null>(null);
+  const [conversationId,setConversationId]=useState<string|null>(()=>localStorage.getItem("bruce_conversation_id"));
   const [busy,setBusy]=useState(false),[listening,setListening]=useState(false),[speaking,setSpeaking]=useState(false);
   const [connected,setConnected]=useState(false),[model,setModel]=useState("Gemini 3.8 Flash");
   const [deviceOnline,setDeviceOnline]=useState(false),[tasks,setTasks]=useState<any[]>([]),[error,setError]=useState("");
@@ -61,6 +61,7 @@ export default function App() {
   },[apiUrl,token,request]);
 
   useEffect(()=>{void refreshStatus();},[refreshStatus]);
+  useEffect(()=>{if(!token||!conversationId)return;request("/v1/conversations/"+encodeURIComponent(conversationId)).then(data=>{if(Array.isArray(data.messages))setMessages(data.messages.map((m:any)=>({role:m.role,text:m.content})));}).catch(()=>{});},[token,conversationId,request]);
   useEffect(()=>{listRef.current?.scrollTo({top:listRef.current.scrollHeight,behavior:"smooth"});},[messages,busy]);
   useEffect(()=>()=>{recognition.current?.stop();window.speechSynthesis?.cancel();},[]);
 
@@ -84,7 +85,7 @@ export default function App() {
     setBusy(true);
     try{
       const data=await request("/v1/chat",{method:"POST",body:JSON.stringify({conversation_id:conversationId,messages:[{role:"user",content:prompt}]})});
-      if(data.conversation_id)setConversationId(data.conversation_id);
+      if(data.conversation_id){setConversationId(data.conversation_id);localStorage.setItem("bruce_conversation_id",data.conversation_id);}
       let answer=String(data.message||"Não recebi uma resposta válida.");
       const actions=Array.isArray(data.queued_actions)?data.queued_actions:[];
       if(actions.length){
@@ -146,7 +147,7 @@ export default function App() {
       <header className="topbar">
         <button className="mobile-menu" onClick={()=>setSidebarOpen(true)}><Menu/></button>
         <div className="welcome"><div className="eyebrow">SEU ASSISTENTE PESSOAL</div><h1>{section==="Início"?"Olá. Vamos começar?":section}</h1><p>{section==="Início"?"Estou aqui para ajudar você a pensar, planejar e agir.":"Vamos trabalhar em "+section.toLowerCase()+", passo a passo."}</p></div>
-        <div className="top-actions"><button className="language-chip"><Languages size={15}/> Português <span>⌄</span></button><button className="icon-button" aria-label="Notificações" onClick={()=>setError("As notificações do BRUCE serão exibidas aqui quando estiverem conectadas.")}><Bell size={18}/></button><button className="icon-button" aria-label="Configurações" onClick={()=>{setDraftUrl(apiUrl);setDraftToken(token);setSettings(true);}}><Settings size={18}/></button></div>
+        <div className="top-actions"><button className="icon-button" aria-label="Nova conversa" title="Nova conversa" onClick={()=>{setConversationId(null);localStorage.removeItem("bruce_conversation_id");setMessages([]);setInput("");}}><Plus size={18}/></button><button className="language-chip"><Languages size={15}/> Português <span>⌄</span></button><button className="icon-button" aria-label="Notificações" onClick={()=>setError("As notificações do BRUCE serão exibidas aqui quando estiverem conectadas.")}><Bell size={18}/></button><button className="icon-button" aria-label="Configurações" onClick={()=>{setDraftUrl(apiUrl);setDraftToken(token);setSettings(true);}}><Settings size={18}/></button></div>
       </header>
 
       <div className="dashboard-grid">
