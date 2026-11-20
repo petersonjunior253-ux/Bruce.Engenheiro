@@ -9,13 +9,6 @@ on:
       - "settings.gradle.kts"
       - "gradle.properties"
       - ".github/workflows/android-build.yml"
-  push:
-    paths:
-      - "app/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/android-build.yml"
 jobs:
   build:
     runs-on: ubuntu-latest
