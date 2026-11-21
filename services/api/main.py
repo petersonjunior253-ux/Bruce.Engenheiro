@@ -251,7 +251,7 @@ async def chat(p:ChatRequest):
     for item in messages:
      if item["role"]=="system":continue
      gemini_contents.append({"role":"model" if item["role"]=="assistant" else "user","parts":[{"text":item["content"]}]})
-    body={"systemInstruction":{"parts":[{"text":context}]},"contents":gemini_contents,"generationConfig":{"maxOutputTokens":settings.max_output_tokens,"temperature":0.7},"tools":[{"functionDeclarations":gemini_tools}]}
+    body={"systemInstruction":{"parts":[{"text":context}]},"contents":gemini_contents,"generationConfig":{"maxOutputTokens":settings.max_output_tokens},"tools":[{"functionDeclarations":gemini_tools}]}
     headers={"Content-Type":"application/json","x-goog-api-key":settings.gemini_api_key}
     r=await client.post(f"https://generativelanguage.googleapis.com/v1beta/models/{settings.model_name}:generateContent",headers=headers,json=body);r.raise_for_status();data=r.json()
     parts=data.get("candidates",[{}])[0].get("content",{}).get("parts",[])
