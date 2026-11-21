@@ -160,6 +160,16 @@ class MainActivity : ComponentActivity() {
                                     }, modifier = Modifier.weight(1f)) { Text("ARQUIVOS", fontSize = 9.sp) }
                                     TextButton(onClick = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }, modifier = Modifier.weight(1f)) { Text("PERMISSÕES DO APP", fontSize = 9.sp) }
                                 }
+                                TextButton(
+                                    onClick = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
+                                            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                                        } else {
+                                            status = "ESFERA FLUTUANTE AUTORIZADA"
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("ATIVAR ESFERA FLUTUANTE", fontSize = 9.sp) }
                             }
                         }
                         Column(Modifier.weight(1f).fillMaxWidth()) {
