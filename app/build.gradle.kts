@@ -22,15 +22,19 @@ val downloadVoskModel by tasks.registering {
         copy { from(zipTree(archive)); into(root) }
         val target = root.resolve("model-pt")
         if (target.exists()) target.deleteRecursively()
+        // Vosk small models store final.mdl at the model root; larger models use am/final.mdl.
+        // Accept both layouts so the official small Portuguese model can be packaged.
         val sourceModelRoot = root.walkTopDown().firstOrNull {
-            it.isDirectory && it.resolve("am/final.mdl").isFile
+            it.isDirectory && (it.resolve("final.mdl").isFile || it.resolve("am/final.mdl").isFile)
         }
         check(sourceModelRoot != null) {
-            "Modelo Vosk incompleto. Diretório am/final.mdl não encontrado. Conteúdo: " +
+            "Modelo Vosk incompleto. final.mdl não encontrado na raiz nem em am/. Conteúdo: " +
                 root.walkTopDown().take(80).joinToString { it.relativeTo(root).path }
         }
-        sourceModelRoot!!.copyRecursively(target, overwrite = true)
-        check(target.resolve("am/final.mdl").isFile) { "Modelo Vosk incompleto após extração: am/final.mdl não encontrado." }
+        sourceModelRoot.copyRecursively(target, overwrite = true)
+        check(target.resolve("final.mdl").isFile || target.resolve("am/final.mdl").isFile) {
+            "Modelo Vosk incompleto após extração: final.mdl não encontrado."
+        }
     }
 }
 android {
