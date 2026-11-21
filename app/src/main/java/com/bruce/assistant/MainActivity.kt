@@ -213,9 +213,9 @@ class MainActivity : ComponentActivity() {
                                             style = Stroke(width = 1.4.dp.toPx())
                                         )
                                     }
-                                    Text("PROTOCOLO", color = Color(0xFF91B6D2), fontSize = 9.sp, letterSpacing = 5.sp, modifier = Modifier.padding(top = 1.dp))
-                                    Text("BRUCE WAYNE", color = Color(0xFFEAF2F8), fontSize = 25.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp, modifier = Modifier.padding(top = 8.dp))
-                                    Text("INTELIGÊNCIA PESSOAL · SISTEMA AUTÔNOMO", color = Color(0xFF8291A1), fontSize = 8.sp, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Text("PERSONAL ASSISTANT PROTOCOL", color = Color(0xFF91B6D2), fontSize = 8.sp, letterSpacing = 1.7.sp, modifier = Modifier.padding(top = 1.dp))
+                                    Text("BRUCE", color = Color(0xFFEAF2F8), fontSize = 25.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp, modifier = Modifier.padding(top = 8.dp))
+                                    Text("PERSONAL INTELLIGENCE", color = Color(0xFF8291A1), fontSize = 8.sp, letterSpacing = 1.2.sp, modifier = Modifier.padding(top = 8.dp))
                                     Button(onClick = { activateVoice() }, modifier = Modifier.padding(top = 20.dp)) { Text("ATIVAR BRUCE · VOZ OFFLINE") }
                                 }
                             } else {
