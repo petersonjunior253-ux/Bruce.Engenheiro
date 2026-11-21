@@ -44,8 +44,8 @@ android {
         applicationId = "com.bruce.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
