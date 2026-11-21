@@ -63,6 +63,9 @@ class WakeWordService : Service(), RecognitionListener {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (neuralOverlay == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+            neuralOverlay = BruceOverlayController(this).also { it.show() }
+        }
         return START_STICKY
     }
 
