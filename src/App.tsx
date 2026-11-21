@@ -148,7 +148,7 @@ export default function App() {
 
   return <main className="app-shell">
     <aside className={"sidebar "+(sidebarOpen?"sidebar-open":"")}>
-      <div className="sidebar-brand"><div className="brand-emblem">W</div><div><strong>PROTOCOLO</strong><b>BRUCE WAYNE</b><small>DISCIPLINA · FOCO · EVOLUÇÃO</small></div><button className="mobile-close" onClick={()=>setSidebarOpen(false)}><X/></button></div>
+      <div className="sidebar-brand"><div className="brand-emblem">B</div><div><strong>PERSONAL ASSISTANT</strong><b>BRUCE</b><small>PERSONAL INTELLIGENCE</small></div><button className="mobile-close" onClick={()=>setSidebarOpen(false)}><X/></button></div>
       <div className="sidebar-label">ASSISTENTE PESSOAL</div>
       <nav className="side-nav">
         {nav.map(item=>{const Icon=item.icon;return <button key={item.name} className={section===item.name?"selected":""} onClick={()=>{setSection(item.name);setSidebarOpen(false);if(item.name!=="Início")setInput(item.prompt);}}><Icon size={17}/><span>{item.name}</span>{section===item.name&&<i/>}</button>;})}
@@ -221,7 +221,7 @@ export default function App() {
           <section className="voice-note"><div className="voice-note-icon"><AudioLines size={20}/></div><div><b>Fale apenas “Bruce”</b><p>Ative a escuta no aplicativo Android para chamar o assistente sem abrir a tela.</p></div></section>
         </aside>
       </div>
-      <footer className="workspace-footer"><span>PROTOCOLO BRUCE WAYNE</span><span>INTELIGÊNCIA PESSOAL · VOZ · AUTOMAÇÃO</span><span className={connected?"footer-online":"footer-offline"}>{connected?"● NÚCLEO ONLINE":"● CONEXÃO PENDENTE"}</span></footer>
+      <footer className="workspace-footer"><span>PERSONAL ASSISTANT PROTOCOL</span><span>INTELIGÊNCIA PESSOAL · VOZ · AUTOMAÇÃO</span><span className={connected?"footer-online":"footer-offline"}>{connected?"● NÚCLEO ONLINE":"● CONEXÃO PENDENTE"}</span></footer>
     </section>
 
     {taskModal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setTaskModal(false);}}><form className="settings-modal task-modal" onSubmit={saveTask}>
