@@ -46,6 +46,7 @@ class WakeWordService : Service(), RecognitionListener {
     private var tts: TextToSpeech? = null
     private var neuralPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var neuralOverlay: BruceOverlayController? = null
     private var ttsReady = false
     private var awaitingCommand = false
     private var commandHandled = false
@@ -560,6 +561,8 @@ class WakeWordService : Service(), RecognitionListener {
         neuralPlayer = null
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+        neuralOverlay?.remove()
+        neuralOverlay = null
         super.onDestroy()
     }
 
