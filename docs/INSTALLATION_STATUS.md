@@ -1,22 +1,34 @@
-# Installation and test status
+# BRUCE installation and validation status
 
-## What is in the repository
-- Web UI with a 3D-style neural core and text-to-speech / browser speech recognition controls.
-- Secure model-provider gateway API with conversation and explicit-memory persistence.
-- Windows Porcupine local wake-word listener scaffold.
-- Android Kotlin foreground-service wake-word scaffold.
-- Android debug APK build workflow.
+## Active implementation
+- Web dashboard in `src/App.tsx` and `src/styles.css`: BRUCE WAYNE navigation, conversational area, voice input while the page is active, quick routine prompts, API/device status, and task list.
+- Private FastAPI backend in `services/api/main.py`: Gemini provider, function calling, SQLite persistence in private Blob, task CRUD, memory CRUD, Android command queue, and Edge TTS.
+- Active native Android app in `app/` (package `com.bruce.assistant`): Vosk wake-word service, foreground microphone service, Android command bridge, notification listener, accessibility service, and file tools.
+- The legacy `clients/android/` directory is not the active APK target.
 
-## Required before a working voice wake test
-1. Generate a custom Porcupine keyword model for the phrase BRUCE, Portuguese pronunciation, and each target platform (Windows .ppn and Android .ppn).
-2. Obtain a Picovoice AccessKey and configure it locally. The key is not embedded in source control.
-3. Android: place the Android model at `clients/android/app/src/main/assets/bruce_android.ppn`, install the APK, grant microphone and notification permissions, and start monitoring while the app is visible.
-4. Windows: place the Windows model at `clients/windows/models/bruce_windows.ppn`, configure its .env and run the listener. Use the startup installer only after a successful manual test.
-5. Configure and deploy the API with a real model-provider key and model ID. Store provider credentials only as server environment variables.
-6. Configure the frontend/device with the API HTTPS URL and a separate BRUCE device token.
+## Voice activation
+- The active Android app uses the official `vosk-model-small-pt-0.3` model, downloaded automatically by Gradle and packaged under the asset path `model-pt`.
+- Model source: https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip (31 MB, Apache 2.0).
+- User must open BRUCE, grant microphone and notification permissions, and tap **ATIVAR BRUCE · VOZ OFFLINE** while the app is visible.
+- After activation, the foreground service and persistent notification allow wake-word listening while the activity is not on screen.
+- Android 14+ restricts starting a microphone foreground service from the background. Do not promise automatic microphone start after reboot or force-stop; the user may need to activate it again.
 
-## Not yet verified
-No APK has been built or installed in a physical device in this repository session. No custom keyword model or provider secret was supplied. Android lock-screen wake behavior, OEM battery behavior, Windows microphone permissions, API provider compatibility, and end-to-end latency still require device tests.
+## Required server configuration
+1. Set `BRUCE_API_KEY` to a strong private device token.
+2. Set `BRUCE_MODEL_PROVIDER=gemini`.
+3. Set `BRUCE_MODEL_NAME=gemini-3.8-flash`.
+4. Set `BRUCE_GEMINI_API_KEY` as a Vercel secret (never in Git, APK, or browser code).
+5. Confirm `/health` reports `model_provider=Gemini` and `model_configured=true`.
 
-## Security
-Do not commit .env files, provider keys, device tokens, or custom model assets that contain account-bound secrets. Rotate any credential that is accidentally committed.
+## Validation completed in the current code branch
+- Python syntax compilation passed for `services/api/main.py`.
+- Vite production build passed (TypeScript + Vite).
+- Local API smoke test passed for health/Gemini configuration, task create/list/complete, and memory save/read.
+- The actual Gemini network call still requires a real Google API key.
+- Android APK compilation and physical-device wake-word testing still need to run through GitHub Actions and a Samsung device.
+
+## Known platform limits
+- Browser speech recognition is not a background wake-word service; it works only while the page is active.
+- Android foreground microphone monitoring must be user-started with permission and a visible persistent notification.
+- Force-stop, reboot, OEM battery management, and microphone policy can interrupt listening.
+- The current API token is a single-device private token. Before public multi-user access, implement user-scoped data, per-device credentials, pairing, revocation, and rate limits.
